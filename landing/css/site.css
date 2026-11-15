@@ -15,6 +15,9 @@
 [data-venue] > img[data-venue-still] { image-rendering: pixelated; }
 body { background: var(--bg); }
 main, footer { position: relative; z-index: 1; }
+body::before { content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none; background: url("../assets/hex-grid.svg") center / cover no-repeat; }
+@media (prefers-color-scheme: light) { body::before { opacity: .45; } }
+.btn[hidden] { display: none; }
 /* grounds let the venue through; copy sits on flat panels of the dealt surface colour */
 main > .hero, main > .section, main > .statement { background: transparent; }
 .vpanel { background: var(--surface); border: 1px solid var(--line); }

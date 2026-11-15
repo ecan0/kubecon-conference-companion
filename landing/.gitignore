@@ -9,3 +9,4 @@ data/demo-attendees.json
 # The rest of the kit stays local; web/scripts/sync-site.mjs fails the build if a page
 # references an asset that is not present, so a missing tracked file is caught in CI.
 assets/**
+!assets/hex-grid.svg
