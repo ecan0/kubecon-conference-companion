@@ -72,7 +72,7 @@ private struct CCGlassButton: ViewModifier {
     }
 }
 
-/// Fallback for Reduce Transparency / pre-iOS 26: solid surface (or lime), 1 px line, capsule.
+/// Fallback for Reduce Transparency / pre-iOS 26: solid surface (or turquoise), 1 px line, capsule.
 struct CCFallbackGlassButtonStyle: ButtonStyle {
     var prominent = false
 

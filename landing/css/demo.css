@@ -1,6 +1,6 @@
 /* Conference Companion: demo layer (presenter bar, organiser overlay, toast). Everything here is scoped to .demo,
    which js/demo.js creates only while demo mode is on. Fixed overlays only: nothing here changes page layout.
-   Flat opaque panels, 1px line, sharp corners, lime for the current item, numbers in the mono face. */
+   Flat opaque panels, 1px line, sharp corners, turquoise for the current item, numbers in the mono face. */
 
 .demo {
   --d-bg: var(--p-surface, #131822);

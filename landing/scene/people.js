@@ -105,7 +105,7 @@ export class People {
         this._part(px, py, pz, cy, sy, 0, tY, 0, 0, 0.02, -0.05, 0.155, 0.15, 0.17, 0.03, this.badgeCol);
         this._part(px, py, pz, cy, sy, 0, tY, 0, 0, 0.02, 0.15, 0.155, 0.05, 0.22, 0.02, T.accent);
       }
-      // guided person: a lime diamond marker floating over the head
+      // guided person: a turquoise diamond marker floating over the head
       if (a.kind === 'guide') {
         const mY = tY + 1.2;
         this._part(px, py, pz, cy, sy, 0, mY, 0, 0, 0, 0, 0, 0.3, 0.3, 0.3, T.accent);

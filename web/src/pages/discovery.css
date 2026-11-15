@@ -1,5 +1,5 @@
 /* Schedule, Search, Talk detail, Organizer, plus the suggest combobox and filter chips.
-   Cards are flat surface panels with a 1px hairline. Primary = lime button; secondary = outline. */
+   Cards are flat surface panels with a 1px hairline. Primary = turquoise button; secondary = outline. */
 .discovery > p { color: var(--muted); }
 .discovery > form { max-width: 720px; margin-block: var(--s-5); }
 .discovery > h1 + p { color: var(--muted); }

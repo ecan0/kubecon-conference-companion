@@ -9,11 +9,11 @@ import SwiftUI
 /// 2. Glass only on floating controls and system bars. Never on content. Never glass on glass:
 ///    group sibling glass controls in one `glassControlGroup` container.
 /// 3. One prominent, tinted action per screen (`.ccGlassButton(prominent: true)` or `.cc`).
-/// 4. One accent: lime. Coral is for errors only, amber for warnings only.
+/// 4. One accent: turquoise. Coral is for errors only, amber for warnings only.
 /// 5. Corners: content is `Theme.radius` (2 pt) or square. Glass controls keep the system capsule.
 enum Theme {
     // Surfaces
-    static let background = Color(red: 15 / 255, green: 31 / 255, blue: 16 / 255)   // #0f1f10
+    static let background = Color(red: 11 / 255, green: 14 / 255, blue: 20 / 255)   // #0b0e14
     static let surface = Color(red: 22 / 255, green: 42 / 255, blue: 23 / 255)      // #162a17
     static let surface2 = Color(red: 29 / 255, green: 53 / 255, blue: 30 / 255)     // #1d351e, one step up
     static let line = Color(red: 42 / 255, green: 61 / 255, blue: 43 / 255)         // #2a3d2b
@@ -26,8 +26,8 @@ enum Theme {
     static let muted = Color(red: 170 / 255, green: 179 / 255, blue: 170 / 255)     // #aab3aa
 
     // Accent and state
-    static let accent = Color(red: 198 / 255, green: 241 / 255, blue: 157 / 255)    // lime #c6f19d
-    static let accentInk = background                                               // text on lime
+    static let accent = Color(red: 147 / 255, green: 234 / 255, blue: 255 / 255)    // turquoise #93eaff
+    static let accentInk = background                                               // text on turquoise
     static let warn = Color(red: 240 / 255, green: 194 / 255, blue: 75 / 255)       // amber #f0c24b
     static let down = Color(red: 255 / 255, green: 122 / 255, blue: 89 / 255)       // coral #ff7a59
     static let error = down

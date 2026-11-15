@@ -118,7 +118,7 @@ export function buildLayout() {
   // ---------------------------------------------------------------- keynote hall
   const fx = { screens: [], markers: [], machine: null };
   B(2.6, T, 13.4, 2.6, 0, 0.45, 'stage');
-  B(2.6, 2.48, 13.4, 2.6, 0.32, 0.45, 'trim', false); // lime stage edge
+  B(2.6, 2.48, 13.4, 2.6, 0.32, 0.45, 'trim', false); // turquoise stage edge
   B(3.4, 2.6, 4.1, 3.1, 0, 0.22, 'stage', false);     // step
   // main screen on the back wall (content is fx)
   B(3.8, T, 12.2, T + 0.12, 0.85, 2.25, 'screen', false);
@@ -176,7 +176,7 @@ export function buildLayout() {
   const desk = { x0: 3.0, x1: 8.2, z0: 17.0, z1: 17.9 };
   B(desk.x0, desk.z0, desk.x1, desk.z1, 0, 0.92, 'creamDark');
   B(desk.x0 - 0.05, desk.z0 - 0.05, desk.x1 + 0.05, desk.z1 + 0.05, 0.92, 1.0, 'cream', false);
-  B(desk.x0, desk.z1, desk.x1, desk.z1 + 0.04, 0.25, 0.55, 'trim', false); // lime band on the desk front
+  B(desk.x0, desk.z1, desk.x1, desk.z1 + 0.04, 0.25, 0.55, 'trim', false); // turquoise band on the desk front
   B(6.4, 17.15, 7.1, 17.3, 1.0, 1.42, 'ink', false);   // monitor
   B(6.65, 17.3, 6.85, 17.45, 1.0, 1.1, 'ink', false);
   B(3.4, 17.2, 4.1, 17.7, 1.0, 1.25, 'metal', false); // badge printer
@@ -189,7 +189,7 @@ export function buildLayout() {
   B(9.3, 22.6, 9.5, 22.8, 0, 2.2, 'metal', false);
   B(9.3, 22.6, 11.3, 22.72, 1.0, 2.2, 'banner', false);
   B(11.1, 22.6, 11.3, 22.8, 0, 2.2, 'metal', false);
-  // banner print: a stacked mark and two lines of "text" in dark pixels on the lime cloth
+  // banner print: a stacked mark and two lines of "text" in dark pixels on the turquoise cloth
   for (const [x0, x1, y0, y1] of [[9.7, 10.0, 1.75, 2.05], [9.7, 10.0, 1.4, 1.65], [10.15, 11.0, 1.9, 2.0], [10.15, 10.8, 1.72, 1.8], [10.15, 10.95, 1.45, 1.53], [9.7, 10.9, 1.15, 1.22]]) {
     B(x0, 22.72, x1, 22.74, y0, y1, 'ink', false);
   }

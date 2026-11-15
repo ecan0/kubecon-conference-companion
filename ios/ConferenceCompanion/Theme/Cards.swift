@@ -14,7 +14,7 @@ struct CCCardModifier: ViewModifier {
     }
 }
 
-/// Selectable chip (filter, tag choice): outlined, lime when selected.
+/// Selectable chip (filter, tag choice): outlined, turquoise when selected.
 struct CCChipStyle: ViewModifier {
     var selected = false
 
@@ -60,7 +60,7 @@ extension View {
     func ccChip(selected: Bool = false) -> some View { modifier(CCChipStyle(selected: selected)) }
 }
 
-/// Content-layer secondary alias (outlined lime). `.cc` is the primary (solid lime, dark ink).
+/// Content-layer secondary alias (outlined turquoise). `.cc` is the primary (solid turquoise, dark ink).
 extension ButtonStyle where Self == CCButtonStyle {
     static var ccPrimary: CCButtonStyle { CCButtonStyle() }
     static var ccSecondary: CCButtonStyle { CCButtonStyle(prominent: false) }
