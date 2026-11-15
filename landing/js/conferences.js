@@ -254,3 +254,9 @@ export function withConference(href, slug) {
   params.set("c", slug);
   return `${path}?${params}${hash}`;
 }
+
+/** A link target from the page or the URL: a same-site path or a local page only. A scheme (javascript:, data:), a protocol-relative URL or a backslash is refused, so the link keeps its server-rendered target. */
+export function sameSiteTarget(value) {
+  const v = String(value ?? '');
+  return /^(?:https?:\/\/[^\s\\"'<>]+|\/(?![/\\])[^\s\\"'<>]*|[a-z][a-z0-9-]*\.html(?:[?#][^\s\\"'<>]*)?)$/i.test(v) ? v : null;
+}

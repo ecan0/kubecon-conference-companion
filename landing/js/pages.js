@@ -3,7 +3,7 @@
    (js/companion-api.js) auto-run. This file renders the finder, fills a conference page from ?c=,
    and drives the journey section's words, rail and scene control. */
 
-import { withConference } from './conferences.js';
+import { withConference, sameSiteTarget } from './conferences.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -134,9 +134,9 @@ async function initConference() {
   marks.forEach((el) => { const k = el.getAttribute('data-c'); if (k in val && val[k]) el.textContent = val[k]; });
   $$('[data-c-topics]').forEach((el) => { el.innerHTML = (c.topics || []).map((t) => `<li class="ic-chip">${esc(t)}</li>`).join(''); });
   $$('a[data-c-link]').forEach((a) => {
-    const base = a.getAttribute('data-c-link');
     const via = a.getAttribute('data-via');
-    a.href = `${withConference(base, c.slug)}${via ? `&via=${via}` : ''}`;
+    const target = sameSiteTarget(withConference(a.getAttribute('data-c-link') ?? '', c.slug));
+    if (target) a.setAttribute('href', `${target}${via ? `&via=${encodeURIComponent(via)}` : ''}`);
   });
   const base = document.title.split(':')[0];
   if (document.body.hasAttribute('data-conference-title')) document.title = `${c.name}: ${document.body.getAttribute('data-conference-title')}`;
@@ -147,9 +147,10 @@ async function initConference() {
 function initLinks() {
   const slug = new URLSearchParams(location.search).get('c') || '';
   $$('a[data-c-link]').forEach((a) => {
-    const base = a.getAttribute('data-c-link');
     const via = a.getAttribute('data-via');
-    a.href = slug ? `${withConference(base, slug)}${via ? `&via=${via}` : ''}` : base;
+    const base = a.getAttribute('data-c-link') ?? '';
+    const target = slug ? sameSiteTarget(withConference(base, slug)) : sameSiteTarget(base);
+    if (target) a.setAttribute('href', `${target}${slug && via ? `&via=${encodeURIComponent(via)}` : ''}`);
   });
 }
 
