@@ -104,7 +104,7 @@ describe("GET /api/status", () => {
   it("shows live search latency and ready hybrid after real searches, with no query text in the body", async () => {
     const { app, world } = await setup();
     for (const mode of ["keyword", "hybrid"]) {
-      const r = await app.inject({ method: "GET", url: `/api/search?q=secret-attendee-question&mode=${mode}` });
+      const r = await app.inject({ method: "GET", url: `/api/search?q=secret-attendee-question&mode=${mode}&conference=test-conf` });
       expect(r.statusCode).toBe(200);
     }
     world.clock += STATUS_CACHE_MS + 1;
@@ -119,10 +119,10 @@ describe("GET /api/status", () => {
   it("goes degraded with hybrid warming up after a 503 search_overloaded, keyword still ok", async () => {
     const { app, world } = await setup();
     world.hybridFails = "overload";
-    const failed = await app.inject({ method: "GET", url: "/api/search?q=x&mode=hybrid" });
+    const failed = await app.inject({ method: "GET", url: "/api/search?q=x&mode=hybrid&conference=test-conf" });
     expect(failed.statusCode).toBe(503);
     expect(failed.json()).toEqual({ error: "search_overloaded" });
-    const kw = await app.inject({ method: "GET", url: "/api/search?q=x&mode=keyword" });
+    const kw = await app.inject({ method: "GET", url: "/api/search?q=x&mode=keyword&conference=test-conf" });
     expect(kw.statusCode).toBe(200);
     world.clock += STATUS_CACHE_MS + 1;
     const { body } = await getStatus(app);
@@ -153,10 +153,10 @@ describe("GET /api/status", () => {
   it("counts 5xx responses as an error rate (but not /healthz or /api/status) and degrades past 5% over 20+ requests", async () => {
     const { app, world } = await setup();
     world.hybridFails = "other";
-    for (let i = 0; i < 18; i++) await app.inject({ method: "GET", url: "/api/search?q=x&mode=keyword" });
+    for (let i = 0; i < 18; i++) await app.inject({ method: "GET", url: "/api/search?q=x&mode=keyword&conference=test-conf" });
     await app.inject({ method: "GET", url: "/healthz" });
     for (let i = 0; i < 2; i++) {
-      const r = await app.inject({ method: "GET", url: "/api/search?q=x&mode=hybrid" });
+      const r = await app.inject({ method: "GET", url: "/api/search?q=x&mode=hybrid&conference=test-conf" });
       expect(r.statusCode).toBe(502);
     }
     world.clock += STATUS_CACHE_MS + 1;
@@ -168,9 +168,9 @@ describe("GET /api/status", () => {
   it("does not count an empty onboarding submit (never reaches the database) as a hybrid success", async () => {
     const { app, world, probes } = await setup();
     world.hybridFails = "overload";
-    const failed = await app.inject({ method: "GET", url: "/api/search?q=x&mode=hybrid" });
+    const failed = await app.inject({ method: "GET", url: "/api/search?q=x&mode=hybrid&conference=test-conf" });
     expect(failed.statusCode).toBe(503);
-    const empty = await app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: { topics: [] } } });
+    const empty = await app.inject({ method: "POST", url: "/api/onboarding?conference=test-conf", payload: { answers: { topics: [] } } });
     expect(empty.statusCode).toBe(200);
     world.clock += STATUS_CACHE_MS + 1;
     const { body } = await getStatus(app);

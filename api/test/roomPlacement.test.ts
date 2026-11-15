@@ -5,7 +5,7 @@ import { registerRoomPlacementRoutes } from "../src/routes/roomPlacement.js";
 import { parseRoomCapacities, loadConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
-import { failingDb, mk, recordingDb, seededDb } from "./search-fixtures.js";
+import { CONFERENCE, failingDb, mk, recordingDb, seededDb } from "./search-fixtures.js";
 
 /** 12 opted-in attendees on kubernetes, 7 on security, 2 on wasm (suppressed by the real aggregate code), plus two talks in one slot. */
 async function setup(talks = [
@@ -28,7 +28,7 @@ async function setup(talks = [
   return db;
 }
 const caps = { Big: 100, Small: 10 };
-const URL = "/api/rooms/placement";
+const URL = `/api/rooms/placement?conference=${CONFERENCE}`;
 
 describe("GET /api/rooms/placement", () => {
   it("requires the organizer key: 401 without or with a wrong key", async () => {
@@ -91,6 +91,14 @@ describe("GET /api/rooms/placement", () => {
     const res = await app.inject({ url: URL });
     expect(res.statusCode).toBe(429);
     expect(res.json()).toMatchObject({ statusCode: 429, error: "rate_limited" });
+  });
+
+  it("requires the conference parameter", async () => {
+    const app = Fastify();
+    registerRoomPlacementRoutes(app, { db: await setup(), nodeEnv: "test" });
+    const res = await app.inject({ url: "/api/rooms/placement" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "conference_required" });
   });
 
   it("is registered by buildServer with capacities from config", async () => {

@@ -1,3 +1,4 @@
+/** Catalog route. Query: `q` and `conference` (both required). */
 export const SUGGEST_PATH = "/api/suggest";
 
 /** One search-as-you-type completion: a talk title or a speaker name. */

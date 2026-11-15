@@ -6,7 +6,7 @@
  *
  * Queries are paraphrased attendee questions that avoid the catalog's own
  * vocabulary. Judgments were hand-picked by reading titles and abstracts in
- * data/talks.json; the `why` line records the reason for each.
+ * data/talks/kubecon-na-2026.json; the `why` line records the reason for each.
  */
 export interface Judged {
   q: string;

@@ -8,7 +8,7 @@ import { LocalHashEmbedder } from "../src/embed/hash.js";
 import { RETRY_AFTER_SECONDS, registerSearchRoutes } from "../src/routes/search.js";
 import { setSpanRunner } from "../src/telemetry/span.js";
 import { loggerOptions } from "../src/telemetry/logger.js";
-import { A, CATALOG, failingDb, recordingDb, seededDb } from "./search-fixtures.js";
+import { A, CATALOG, CONFERENCE, failingDb, recordingDb, seededDb } from "./search-fixtures.js";
 
 const embedder = new LocalHashEmbedder();
 
@@ -31,7 +31,7 @@ const ids = (r: SearchResponse) => r.hits.map((h) => h.talk.id);
 describe("GET /api/search", () => {
   it("keyword mode matches stemmed terms and returns scored hits with the keyword leg", async () => {
     const { app } = await server();
-    const res = await app.inject({ method: "GET", url: "/api/search?q=supply%20chain&mode=keyword" });
+    const res = await app.inject({ method: "GET", url: `/api/search?q=supply%20chain&mode=keyword&conference=${CONFERENCE}` });
     expect(res.statusCode).toBe(200);
     const body = res.json() as SearchResponse;
     expect(body.mode).toBe("keyword");
@@ -46,22 +46,22 @@ describe("GET /api/search", () => {
 
   it("ranks a title match above an abstract-only match", async () => {
     const { app } = await server();
-    const body = (await app.inject({ method: "GET", url: "/api/search?q=sigstore&mode=keyword" })).json() as SearchResponse;
+    const body = (await app.inject({ method: "GET", url: `/api/search?q=sigstore&mode=keyword&conference=${CONFERENCE}` })).json() as SearchResponse;
     expect(ids(body)).toEqual(["a"]);
-    const t = (await app.inject({ method: "GET", url: "/api/search?q=opentelemetry&mode=keyword" })).json() as SearchResponse;
+    const t = (await app.inject({ method: "GET", url: `/api/search?q=opentelemetry&mode=keyword&conference=${CONFERENCE}` })).json() as SearchResponse;
     expect(ids(t)[0]).toBe("d");
   });
 
   it.each(["keyword", "hybrid"])("forgives a misspelled query in %s mode (#55)", async (mode) => {
     const { app } = await server();
-    const body = (await app.inject({ method: "GET", url: `/api/search?q=kuberentes&mode=${mode}` })).json() as SearchResponse;
+    const body = (await app.inject({ method: "GET", url: `/api/search?q=kuberentes&mode=${mode}&conference=${CONFERENCE}` })).json() as SearchResponse;
     const kw = body.hits.filter((h) => h.matched?.includes("keyword")).map((h) => h.talk.id);
     expect(kw).toContain("c");
   });
 
   it("hybrid mode (default) fuses both legs and reports which legs matched", async () => {
     const { app } = await server();
-    const res = await app.inject({ method: "GET", url: "/api/search?q=supply%20chain%20builds" });
+    const res = await app.inject({ method: "GET", url: `/api/search?q=supply%20chain%20builds&conference=${CONFERENCE}` });
     const body = res.json() as SearchResponse;
     expect(body.mode).toBe("hybrid");
     expect(ids(body).slice(0, 2).sort()).toEqual(["a", "b"]);
@@ -75,14 +75,14 @@ describe("GET /api/search", () => {
 
   it("respects size", async () => {
     const { app } = await server();
-    const body = (await app.inject({ method: "GET", url: "/api/search?q=kubernetes&size=2" })).json() as SearchResponse;
+    const body = (await app.inject({ method: "GET", url: `/api/search?q=kubernetes&size=2&conference=${CONFERENCE}` })).json() as SearchResponse;
     expect(body.hits).toHaveLength(2);
   });
 
   it("debug=1 describes the plan (engine, mode, parameter count) without SQL, parameter values or the query text", async () => {
     const { app } = await server();
     const q = "zebra-secret-query";
-    const res = await app.inject({ method: "GET", url: `/api/search?q=${q}&mode=hybrid&debug=1` });
+    const res = await app.inject({ method: "GET", url: `/api/search?q=${q}&mode=hybrid&debug=1&conference=${CONFERENCE}` });
     const debug = (res.json() as SearchResponse).debug as Record<string, unknown>;
     expect(Object.keys(debug).sort()).toEqual(["engine", "mode", "paramCount"]);
     expect(debug).toMatchObject({ engine: "postgres", mode: "hybrid", paramCount: expect.any(Number) });
@@ -92,12 +92,12 @@ describe("GET /api/search", () => {
 
   it("emits search and embed spans with only allowlisted attributes and no query text", async () => {
     const { app } = await server();
-    await app.inject({ method: "GET", url: "/api/search?q=hello-canary" });
+    await app.inject({ method: "GET", url: `/api/search?q=hello-canary&conference=${CONFERENCE}` });
     const search = spans.find((s) => s.name === "search")!;
     expect(search.attrs).toEqual({ "search.mode": "hybrid" });
     expect(search.set).toEqual({ "search.hits": CATALOG.length });
     expect(spans.some((s) => s.name === "embed")).toBe(true);
-    await app.inject({ method: "GET", url: "/api/search?q=hello&mode=keyword" });
+    await app.inject({ method: "GET", url: `/api/search?q=hello&mode=keyword&conference=${CONFERENCE}` });
     expect(spans.filter((s) => s.name === "embed")).toHaveLength(1);
     expect(JSON.stringify(spans)).not.toContain("hello-canary");
   });
@@ -125,11 +125,32 @@ describe("GET /api/search", () => {
   it("treats operators and quotes in q as plain text", async () => {
     const { app } = await server();
     for (const q of ["'; drop table talks; --", "supply & | ! ( ) :*", '"unbalanced', "%_\\"]) {
-      const res = await app.inject({ method: "GET", url: `/api/search?q=${encodeURIComponent(q)}&mode=keyword` });
+      const res = await app.inject({ method: "GET", url: `/api/search?q=${encodeURIComponent(q)}&mode=keyword&conference=${CONFERENCE}` });
       expect(res.statusCode).toBe(200);
     }
-    const body = (await app.inject({ method: "GET", url: "/api/search?q=supply&mode=keyword" })).json() as SearchResponse;
+    const body = (await app.inject({ method: "GET", url: `/api/search?q=supply&mode=keyword&conference=${CONFERENCE}` })).json() as SearchResponse;
     expect(body.hits.length).toBeGreaterThan(0);
+  });
+
+  it("requires the conference parameter and never guesses an event", async () => {
+    const { app, db } = await server();
+    const res = await app.inject({ method: "GET", url: "/api/search?q=kubernetes&mode=keyword" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "conference_required" });
+    expect(db.statements).toHaveLength(0);
+    const bad = await app.inject({ method: "GET", url: "/api/search?q=kubernetes&mode=keyword&conference=Not%20A%20Slug" });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json()).toMatchObject({ error: "invalid_request" });
+    expect(db.statements).toHaveLength(0);
+  });
+
+  it("answers an unknown conference with the normal empty result", async () => {
+    const { app } = await server();
+    const res = await app.inject({ method: "GET", url: "/api/search?q=kubernetes&mode=keyword&conference=pycon-us-2027" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as SearchResponse;
+    expect(body.hits).toEqual([]);
+    expect(body.facets).toEqual({ track: [], level: [], day: [] });
   });
 });
 
@@ -151,7 +172,7 @@ function appWithLogs(db: ReturnType<typeof failingDb>) {
 describe("database failures are diagnosable without leaking", () => {
   it("maps an unreachable database to 503 + Retry-After, with error.type on the span and one log line", async () => {
     const { app, lines, all } = appWithLogs(failingDb({ code: "ECONNREFUSED", message: `connect failed near "${SECRET}"` }));
-    const res = await app.inject({ method: "GET", url: `/api/search?q=${SECRET}&mode=hybrid` });
+    const res = await app.inject({ method: "GET", url: `/api/search?q=${SECRET}&mode=hybrid&conference=${CONFERENCE}` });
     expect(res.statusCode).toBe(503);
     expect(res.headers["retry-after"]).toBe(String(RETRY_AFTER_SECONDS));
     expect(res.json()).toEqual({ error: "search_overloaded" });
@@ -165,7 +186,7 @@ describe("database failures are diagnosable without leaking", () => {
 
   it("keeps another database error as 502 search_unavailable and records its SQLSTATE", async () => {
     const { app, lines, all } = appWithLogs(failingDb({ code: "42601", message: `syntax error at or near "${SECRET}"` }));
-    const res = await app.inject({ method: "GET", url: `/api/search?q=${SECRET}` });
+    const res = await app.inject({ method: "GET", url: `/api/search?q=${SECRET}&conference=${CONFERENCE}` });
     expect(res.statusCode).toBe(502);
     expect(res.headers["retry-after"]).toBeUndefined();
     expect(res.json()).toEqual({ error: "search_unavailable" });
@@ -176,7 +197,7 @@ describe("database failures are diagnosable without leaking", () => {
 
   it("applies to onboarding and schedule paths too", async () => {
     const { app } = appWithLogs(failingDb({ code: "ECONNREFUSED", message: SECRET }));
-    const onboarding = await app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: { topics: ["security"], freeText: SECRET } } });
+    const onboarding = await app.inject({ method: "POST", url: `/api/onboarding?conference=${CONFERENCE}`, payload: { answers: { topics: ["security"], freeText: SECRET } } });
     expect(onboarding.statusCode).toBe(503);
     expect(onboarding.headers["retry-after"]).toBe(String(RETRY_AFTER_SECONDS));
     spans.length = 0;
@@ -199,7 +220,7 @@ describe("POST /api/onboarding", () => {
 
   it("filters by level and time window and returns ranked talks", async () => {
     const { app } = await server();
-    const res = await app.inject({ method: "POST", url: "/api/onboarding?debug=1", payload: { answers } });
+    const res = await app.inject({ method: "POST", url: `/api/onboarding?debug=1&conference=${CONFERENCE}`, payload: { answers } });
     expect(res.statusCode).toBe(200);
     const body = res.json() as OnboardingResponse;
     expect(body.query).toEqual({
@@ -217,22 +238,30 @@ describe("POST /api/onboarding", () => {
   it("applies the availability window to start and end", async () => {
     const { app } = await server();
     const narrow = { ...answers, availableFrom: "2026-11-10T11:00:00.000Z", availableTo: "2026-11-10T12:00:00.000Z" };
-    const body = (await app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: narrow } })).json() as OnboardingResponse;
+    const body = (await app.inject({ method: "POST", url: `/api/onboarding?conference=${CONFERENCE}`, payload: { answers: narrow } })).json() as OnboardingResponse;
     expect(body.hits.map((h) => h.talk.id).sort()).toEqual(["c", "e"]);
   });
 
   it("rejects bad answers", async () => {
     const { app } = await server();
-    const post = (a: unknown) => app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: a } });
+    const post = (a: unknown) => app.inject({ method: "POST", url: `/api/onboarding?conference=${CONFERENCE}`, payload: { answers: a } });
     expect((await post(undefined)).statusCode).toBe(400);
     expect((await post({ topics: "x" })).statusCode).toBe(400);
     expect((await post({ topics: [], experience: "wizard" })).statusCode).toBe(400);
     expect((await post({ topics: [], availableFrom: "soon" })).statusCode).toBe(400);
   });
 
+  it("requires the conference parameter", async () => {
+    const { app, db } = await server();
+    const res = await app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: { topics: ["security"] } } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "conference_required" });
+    expect(db.statements).toHaveLength(0);
+  });
+
   it("skips the database when the answers produce no text", async () => {
     const { app, db } = await server();
-    const res = await app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: { topics: [], experience: "beginner", goals: [] } } });
+    const res = await app.inject({ method: "POST", url: `/api/onboarding?conference=${CONFERENCE}`, payload: { answers: { topics: [], experience: "beginner", goals: [] } } });
     expect((res.json() as OnboardingResponse).hits).toEqual([]);
     expect(db.statements).toHaveLength(0);
   });
@@ -270,7 +299,7 @@ describe("schedule routes", () => {
   it("builds an overlap-free schedule from answers, saves it and reads it back", async () => {
     const { app, db } = await scheduleServer();
     const headers = await asAttendee("ada-1");
-    const res = await app.inject({ method: "POST", url: "/api/schedule", headers, payload: { answers: { topics: ["security supply chain"], experience: "beginner", goals: [] } } });
+    const res = await app.inject({ method: "POST", url: `/api/schedule?conference=${CONFERENCE}`, headers, payload: { answers: { topics: ["security supply chain"], experience: "beginner", goals: [] } } });
     expect(res.statusCode).toBe(200);
     const body = res.json() as ScheduleResponse;
     const chosen = body.items.map((i) => i.talk.id);
@@ -384,8 +413,8 @@ describe("schedule routes", () => {
 
   it("keeps search and onboarding public (no token needed)", async () => {
     const { app } = await scheduleServer();
-    expect((await app.inject({ method: "GET", url: "/api/search?q=x&mode=keyword" })).statusCode).toBe(200);
-    const onboarding = await app.inject({ method: "POST", url: "/api/onboarding", payload: { answers: { topics: ["security"] } } });
+    expect((await app.inject({ method: "GET", url: `/api/search?q=x&mode=keyword&conference=${CONFERENCE}` })).statusCode).toBe(200);
+    const onboarding = await app.inject({ method: "POST", url: `/api/onboarding?conference=${CONFERENCE}`, payload: { answers: { topics: ["security"] } } });
     expect(onboarding.statusCode).toBe(200);
   });
 
@@ -437,11 +466,21 @@ describe("schedule routes", () => {
   it("validates the body", async () => {
     const { app } = await scheduleServer();
     const headers = await asAttendee("ada-1");
-    const post = (payload: unknown) => app.inject({ method: "POST", url: "/api/schedule", headers, payload: payload as object });
+    const post = (payload: unknown) => app.inject({ method: "POST", url: `/api/schedule?conference=${CONFERENCE}`, headers, payload: payload as object });
     expect((await post({})).statusCode).toBe(400);
     expect((await post({ talkIds: [1] })).statusCode).toBe(400);
     expect((await post({ talkIds: ["a"], maxTalks: 0 })).statusCode).toBe(400);
     expect((await post({ answers: { topics: 3 } })).statusCode).toBe(400);
+  });
+
+  it("requires the conference parameter only when the body asks for answers", async () => {
+    const { app } = await scheduleServer();
+    const headers = await asAttendee("ada-1");
+    const answers = await app.inject({ method: "POST", url: "/api/schedule", headers, payload: { answers: { topics: ["security"], experience: "beginner", goals: [] } } });
+    expect(answers.statusCode).toBe(400);
+    expect(answers.json()).toEqual({ error: "conference_required" });
+    // A talkIds save is a by-id lookup, so it needs no catalogue scope.
+    expect((await app.inject({ method: "POST", url: "/api/schedule", headers, payload: { talkIds: ["a"] } })).statusCode).toBe(200);
   });
 });
 

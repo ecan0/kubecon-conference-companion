@@ -24,8 +24,11 @@ const HELD_OUT: Judged[] = [
 // Read-only: DATABASE_URL / DATABASE_CA_FILE as for search-eval.ts; queries embedded with the configured embedder (e5 by default).
 const { db, embedder } = connect();
 
+/** The catalog the held-out judgments were written against. */
+const CONFERENCE = process.env.SEARCH_CONFERENCE || "kubecon-na-2026";
+
 async function ids(mode: "keyword" | "hybrid", q: string, tuning: SearchTuning): Promise<string[]> {
-  return (await runSearch(db, embedder, { text: q, mode, size: 10, tuning })).hits.map((h) => h.talk.id);
+  return (await runSearch(db, embedder, { text: q, mode, size: 10, conference: CONFERENCE, tuning })).hits.map((h) => h.talk.id);
 }
 
 const OFF = { ...DEFAULT_TUNING, queryExpansion: "off" as const };

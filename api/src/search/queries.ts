@@ -130,9 +130,14 @@ export function dayBounds(day: string): { start: string; end: string } {
   return { start: start.toISOString(), end: new Date(start.getTime() + 86_400_000).toISOString() };
 }
 
-/** WHERE conditions (on alias `t`) for level, time window, track, day and the tuning's track exclusion. */
-export function eligibilityConditions(p: Params, f: SearchFilters = {}, tuning: SearchTuning = DEFAULT_TUNING): string[] {
-  const c: string[] = [];
+/** WHERE conditions (on alias `t`): the conference first, then level, time window, track, day and the tuning's track exclusion. */
+export function eligibilityConditions(
+  p: Params,
+  conference: string,
+  f: SearchFilters = {},
+  tuning: SearchTuning = DEFAULT_TUNING,
+): string[] {
+  const c: string[] = [`t.conference = ${p.add(conference)}`];
   if (f.levels && f.levels.length > 0) c.push(`t.level = any(${p.add(f.levels, "::text[]")})`);
   if (f.from) c.push(`t.start_at >= ${p.add(f.from, "::timestamptz")}`);
   if (f.to) c.push(`t.end_at <= ${p.add(f.to, "::timestamptz")}`);
@@ -173,7 +178,7 @@ const FUZZY_WEIGHT = 0.3;
  * come from pg_trgm word similarity of each query word against the title and
  * the tags.
  */
-function keywordLeg(p: Params, text: string, filters: SearchFilters, tuning: SearchTuning): string {
+function keywordLeg(p: Params, text: string, conference: string, filters: SearchFilters, tuning: SearchTuning): string {
   const t = p.add(text);
   const rawQuery = `websearch_to_tsquery('english', ${t})`;
   // "any": at least one positive term matches, but every excluded term (`-word`, printed `!'word'`) still excludes:
@@ -185,7 +190,7 @@ function keywordLeg(p: Params, text: string, filters: SearchFilters, tuning: Sea
     `'(' || (select string_agg(x.p, ' | ') from ${parts} as x(p) where x.p <> '' and left(x.p, 1) <> '!') || ')' || ` +
     `coalesce((select ' & ' || string_agg(x.p, ' & ') from ${parts} as x(p) where left(x.p, 1) = '!'), '') else '' end`;
   const tsq = tuning.keywordMatch === "all" ? rawQuery : `to_tsquery('simple', ${anyText})`;
-  const where = eligibilityConditions(p, filters, tuning);
+  const where = eligibilityConditions(p, conference, filters, tuning);
   const terms = tuning.fuzzyThreshold !== undefined ? fuzzyTerms(text) : [];
   let scoreExpr = `ts_rank_cd('${RANK_WEIGHTS}', t.fts, ${tsq}, 32)`;
   let match = `t.fts @@ ${tsq}`;
@@ -202,9 +207,9 @@ function keywordLeg(p: Params, text: string, filters: SearchFilters, tuning: Sea
 }
 
 /** Semantic leg: nearest talks by cosine distance to the query vector (`distance`, smaller is closer). */
-function semanticLeg(p: Params, qvec: string, filters: SearchFilters, tuning: SearchTuning, window: number): string {
+function semanticLeg(p: Params, qvec: string, conference: string, filters: SearchFilters, tuning: SearchTuning, window: number): string {
   const v = p.add(qvec, "::vector");
-  const where = ["t.embedding is not null", ...eligibilityConditions(p, filters, tuning)];
+  const where = ["t.embedding is not null", ...eligibilityConditions(p, conference, filters, tuning)];
   return `select t.id, (t.embedding <=> ${v}) as distance from talks t where ${where.join(" and ")} order by distance, t.id limit ${window}`;
 }
 
@@ -216,6 +221,8 @@ export interface SearchPlan {
   /** CTE prefix shared by `hits` and facet statements, ending with a `cand` CTE (`id`). */
   withClause: string;
   params: unknown[];
+  /** Catalogue event every leg of the plan is scoped to. */
+  conference: string;
 }
 
 const intLiteral = (n: number) => String(Math.max(1, Math.floor(n)));
@@ -224,13 +231,19 @@ const intLiteral = (n: number) => String(Math.max(1, Math.floor(n)));
  * Plain keyword search over title/tags/abstract: stemmed full text plus typo
  * tolerance, ranked by ts_rank_cd. Every eligible match is a candidate; `size` caps the page.
  */
-export function buildKeywordPlan(text: string, size: number, filters: SearchFilters = {}, tuning: SearchTuning = DEFAULT_TUNING): SearchPlan {
+export function buildKeywordPlan(
+  text: string,
+  size: number,
+  conference: string,
+  filters: SearchFilters = {},
+  tuning: SearchTuning = DEFAULT_TUNING,
+): SearchPlan {
   const p = new Params();
-  const withClause = `with kw as (${keywordLeg(p, expandedText(text, tuning), filters, tuning)}), cand as (select id from kw)`;
+  const withClause = `with kw as (${keywordLeg(p, expandedText(text, tuning), conference, filters, tuning)}), cand as (select id from kw)`;
   const hits =
     `${withClause} select ${prefixed("t")}, kw.score as score, true as in_keyword, false as in_semantic ` +
     `from kw join talks t on t.id = kw.id order by kw.score desc, t.id limit ${intLiteral(size)}`;
-  return { hits: { text: hits, params: p.values }, candidates: { text: `${withClause} select id from cand`, params: p.values }, withClause, params: p.values };
+  return { hits: { text: hits, params: p.values }, candidates: { text: `${withClause} select id from cand`, params: p.values }, withClause, params: p.values, conference };
 }
 
 /**
@@ -243,13 +256,14 @@ export function buildHybridPlan(
   text: string,
   qvec: string,
   size: number,
+  conference: string,
   filters: SearchFilters = {},
   tuning: SearchTuning = DEFAULT_TUNING,
 ): SearchPlan {
   const p = new Params();
   const window = Math.max(tuning.rankWindowSize, size);
-  const kwSql = keywordLeg(p, expandedText(text, tuning), filters, tuning);
-  const semSql = semanticLeg(p, qvec, filters, tuning, window);
+  const kwSql = keywordLeg(p, expandedText(text, tuning), conference, filters, tuning);
+  const semSql = semanticLeg(p, qvec, conference, filters, tuning, window);
   const kwRank = `kw as (select id, score, row_number() over (order by score desc, id) as rnk from (${kwSql}) s order by score desc, id limit ${window})`;
   const semRank = `sem as (select id, 1 - distance as score, row_number() over (order by distance, id) as rnk from (${semSql}) s)`;
   // Only parameters the statement references are bound (Postgres rejects unused ones as untyped).
@@ -268,7 +282,7 @@ export function buildHybridPlan(
   const hits =
     `${withClause} select ${prefixed("t")}, cand.score as score, cand.in_keyword, cand.in_semantic ` +
     `from cand join talks t on t.id = cand.id order by cand.score desc, t.id limit ${intLiteral(size)}`;
-  return { hits: { text: hits, params: p.values }, candidates: { text: `${withClause} select id from cand`, params: p.values }, withClause, params: p.values };
+  return { hits: { text: hits, params: p.values }, candidates: { text: `${withClause} select id from cand`, params: p.values }, withClause, params: p.values, conference };
 }
 
 /** Min-max normalisation of a leg's score over its window; a leg whose scores are all equal normalises to 1. */

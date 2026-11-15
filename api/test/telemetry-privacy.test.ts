@@ -77,7 +77,7 @@ describe("attendee flow telemetry privacy", () => {
       const { attendeeId, token } = reg.json<{ attendeeId: string; token: string }>();
       expect(attendeeId).toBeTruthy();
       const headers = { authorization: `Bearer ${token}` };
-      const search = await app.inject({ method: "GET", url: `/api/search?q=${encodeURIComponent(QUERY)}&mode=keyword`, headers });
+      const search = await app.inject({ method: "GET", url: `/api/search?q=${encodeURIComponent(QUERY)}&mode=keyword&conference=test-conf`, headers });
       expect(search.statusCode).toBe(200);
       const issue = await app.inject({ method: "POST", url: "/api/access/token", headers });
       expect(issue.statusCode).toBe(200);

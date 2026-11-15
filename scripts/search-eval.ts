@@ -13,7 +13,7 @@
  *   npx tsx scripts/search-eval.ts --check   # no database: validate judgments, print the SQL
  *
  * Judgments were hand-picked by reading titles and abstracts in
- * data/talks.json; the `why` line records the reason for each. Queries are
+ * data/talks/kubecon-na-2026.json; the `why` line records the reason for each. Queries are
  * paraphrased attendee questions that avoid the catalog's own vocabulary.
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -49,6 +49,9 @@ export const VARIANTS: Record<string, SearchTuning> = {
 
 const SIZE = 10;
 
+/** The catalog the judgments were written against; override to evaluate another event's talks. */
+const CONFERENCE = process.env.SEARCH_CONFERENCE || "kubecon-na-2026";
+
 interface Hit {
   id: string;
   title: string;
@@ -66,7 +69,7 @@ export function hitAt(ids: string[], relevant: string[], k: number): boolean {
 }
 
 async function search(db: Db, embedder: Embedder, mode: "keyword" | "hybrid", text: string, tuning: SearchTuning): Promise<Hit[]> {
-  const r = await runSearch(db, embedder, { text, mode, size: SIZE, tuning });
+  const r = await runSearch(db, embedder, { text, mode, size: SIZE, conference: CONFERENCE, tuning });
   return r.hits.map((h) => ({ id: h.talk.id, title: h.talk.title, track: h.talk.track }));
 }
 
@@ -89,7 +92,7 @@ function arg(name: string): string | undefined {
 }
 
 function check(): void {
-  const talks = JSON.parse(readFileSync(new URL("../data/talks.json", import.meta.url), "utf8")) as {
+  const talks = JSON.parse(readFileSync(new URL("../data/talks/kubecon-na-2026.json", import.meta.url), "utf8")) as {
     id: string;
     title: string;
   }[];
@@ -103,11 +106,11 @@ function check(): void {
     }
   }
   for (const [name, t] of Object.entries(VARIANTS)) {
-    console.log(`\n## ${name}\nkeyword: ${buildKeywordPlan("q", SIZE, {}, t).hits.text}`);
-    console.log(`hybrid: ${buildHybridPlan("q", "[0]", SIZE, {}, t).hits.text}`);
+    console.log(`\n## ${name}\nkeyword: ${buildKeywordPlan("q", SIZE, CONFERENCE, {}, t).hits.text}`);
+    console.log(`hybrid: ${buildHybridPlan("q", "[0]", SIZE, CONFERENCE, {}, t).hits.text}`);
   }
   if (bad > 0) {
-    console.error(`${bad} judged id(s) not in data/talks.json`);
+    console.error(`${bad} judged id(s) not in data/talks/kubecon-na-2026.json`);
     process.exit(1);
   }
 }
@@ -201,8 +204,8 @@ async function evaluate(db: Db, embedder: Embedder, names: string[]): Promise<vo
       const qvec = vectorLiteral(await embedder.embed(expandedText(j.q, tuning), "query"));
       const ids = (
         await db.query<{ id: string }>(
-          `select id from talks t where embedding is not null${tuning.excludeTracks.length ? " and not (track = any($2::text[]))" : ""} order by embedding <=> $1::vector, id limit ${SIZE}`,
-          tuning.excludeTracks.length ? [qvec, [...tuning.excludeTracks]] : [qvec],
+          `select t.id from talks t where t.conference = $3 and t.embedding is not null and not (t.track = any($2::text[])) order by t.embedding <=> $1::vector, t.id limit ${SIZE}`,
+          [qvec, [...tuning.excludeTracks], CONFERENCE],
         )
       ).rows.map((r) => r.id);
       const rr = reciprocalRank(ids, j.relevant);

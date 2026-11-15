@@ -1,6 +1,9 @@
 import type { Db } from "../src/db/client.js";
 import type { CatalogTalk } from "../src/db/talks.js";
-import { insertTalks, testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
+
+/** The conference the fixture catalogue is seeded under. */
+export const CONFERENCE = TEST_CONFERENCE;
 
 /** `h` hours after 2026-11-10T00:00Z as an ISO string. */
 export const at = (h: number) => new Date(Date.UTC(2026, 10, 10, 0, 0) + h * 3600_000).toISOString();

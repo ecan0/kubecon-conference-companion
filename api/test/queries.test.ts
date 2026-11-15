@@ -14,7 +14,8 @@ import {
   type SearchFilters,
   type SearchTuning,
 } from "../src/search/queries.js";
-import { C, CATALOG, D, mk, seededDb } from "./search-fixtures.js";
+import { insertTalks } from "./pg.js";
+import { C, CATALOG, CONFERENCE, D, mk, seededDb } from "./search-fixtures.js";
 
 const embedder = new LocalHashEmbedder();
 
@@ -22,9 +23,9 @@ async function run(db: Awaited<ReturnType<typeof seededDb>>, plan: { hits: { tex
   return (await db.query<{ id: string; score: number; in_keyword: boolean; in_semantic: boolean }>(plan.hits.text, plan.hits.params)).rows;
 }
 const hybrid = async (db: Awaited<ReturnType<typeof seededDb>>, text: string, size = 10, f: SearchFilters = {}, t: SearchTuning = DEFAULT_TUNING) =>
-  run(db, buildHybridPlan(text, vectorLiteral(await embedder.embed(text, "query")), size, f, t));
+  run(db, buildHybridPlan(text, vectorLiteral(await embedder.embed(text, "query")), size, CONFERENCE, f, t));
 const keyword = (db: Awaited<ReturnType<typeof seededDb>>, text: string, size = 10, f: SearchFilters = {}, t: SearchTuning = DEFAULT_TUNING) =>
-  run(db, buildKeywordPlan(text, size, f, t));
+  run(db, buildKeywordPlan(text, size, CONFERENCE, f, t));
 
 describe("keyword plan", () => {
   it("matches any term (like the old OR multi_match) and ranks talks matching more terms first", async () => {
@@ -98,10 +99,10 @@ describe("keyword plan", () => {
   });
 
   it("is parameterised: the SQL never contains the query text, only placeholders", () => {
-    const plan = buildKeywordPlan("zebra-secret'; drop table talks; --", 5, { tracks: ["Sec'urity"], day: "2026-11-10" });
+    const plan = buildKeywordPlan("zebra-secret'; drop table talks; --", 5, CONFERENCE, { tracks: ["Sec'urity"], day: "2026-11-10" });
     expect(plan.hits.text).not.toMatch(/zebra|drop table|Sec'urity|2026/);
     expect(plan.hits.text).toContain("$1");
-    expect(plan.hits.params[0]).toEqual(expect.stringContaining("zebra-secret'; drop table talks; --"));
+    expect(plan.hits.params).toContainEqual(expect.stringContaining("zebra-secret'; drop table talks; --"));
     const referenced = new Set([...plan.hits.text.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
     expect([...referenced].sort((a, b) => a - b)).toEqual(plan.hits.params.map((_, i) => i + 1));
   });
@@ -128,7 +129,7 @@ describe("hybrid plan", () => {
     expect(Number(k20[0]!.score)).toBeLessThanOrEqual(2 / 21 + 1e-9);
     const narrow = await hybrid(db, "supply chain builds", 1, {}, { ...DEFAULT_TUNING, rankWindowSize: 2 });
     expect(narrow).toHaveLength(1);
-    const windowed = await run(db, buildHybridPlan("supply chain builds", vectorLiteral(await embedder.embed("x", "query")), 1, {}, { ...DEFAULT_TUNING, rankWindowSize: 1 }));
+    const windowed = await run(db, buildHybridPlan("supply chain builds", vectorLiteral(await embedder.embed("x", "query")), 1, CONFERENCE, {}, { ...DEFAULT_TUNING, rankWindowSize: 1 }));
     expect(windowed).toHaveLength(1);
   });
 
@@ -163,10 +164,20 @@ describe("hybrid plan", () => {
 
   it("all params are referenced and the statement holds no user text", async () => {
     const q = "zebra-secret";
-    const plan = buildHybridPlan(q, vectorLiteral(await embedder.embed(q, "query")), 5, { levels: ["beginner"] });
+    const plan = buildHybridPlan(q, vectorLiteral(await embedder.embed(q, "query")), 5, CONFERENCE, { levels: ["beginner"] });
     expect(plan.hits.text).not.toContain(q);
     const referenced = new Set([...plan.hits.text.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
     expect([...referenced].sort((a, b) => a - b)).toEqual(plan.hits.params.map((_, i) => i + 1));
+  });
+});
+
+describe("conference scope", () => {
+  it("both legs and the fusion only see the requested conference", async () => {
+    const db = await seededDb();
+    // A talk in another event that would otherwise match and outrank the fixture catalog.
+    await insertTalks(db, [mk("other", 9, 10, { title: "Kubernetes supply chain security", tags: ["kubernetes", "supply-chain"] })], "other-conf");
+    expect((await keyword(db, "kubernetes supply chain security", 10)).map((r) => r.id)).not.toContain("other");
+    expect((await hybrid(db, "kubernetes supply chain security", 10)).map((r) => r.id)).not.toContain("other");
   });
 });
 
