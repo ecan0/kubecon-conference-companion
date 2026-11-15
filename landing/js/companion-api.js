@@ -9,6 +9,7 @@
 //                                  (same wording and interval as web/src/components/status.ts)
 
 import { ASK_KINDS, LIMITS, validateProfile } from "./chat-script.js";
+import { withConference } from "./conferences.js";
 
 export const STATUS_POLL_MS = 30_000; // STATUS_POLL_MS in web/src/components/status.ts
 export const DEFAULT_APP_BASE = "http://localhost:5173";
@@ -215,13 +216,15 @@ export function toRegisterRequest(profile, conference) {
     const claim = JSON.parse(sessionStorage.getItem("cc.identity-claim") || "null");
     if (claim && typeof claim.token === "string") identityClaim = claim.token;
   } catch { /* no browser storage */ }
+  // The API refuses a registration without a conference, so the page's ?c= answers when the caller did not pass one.
+  const slug = conference?.slug || conferenceSlug();
   return {
     ...(identityClaim !== undefined ? { identityClaim } : {}),
     name: profile.name,
     email: "",
     interests: profile.interests,
     consent: { clusterMap: true, qrCheckin: true },
-    ...(conference?.slug ? { conference: conference.slug } : {}),
+    ...(slug ? { conference: slug } : {}),
   };
 }
 
@@ -305,7 +308,8 @@ export async function signUp(conference, profile, { returning = false } = {}) {
   } catch (error) {
     if (error?.status === 409) {
       try { sessionStorage.removeItem("cc.identity-claim"); } catch { /* storage unavailable */ }
-      return { source: "error", error: "already_registered" };
+      // 409 also covers a conference with no published talks: that is not a sign-in problem, so it stays separate.
+      return { source: "error", error: error?.code === "schedule_not_published" ? "schedule_not_published" : "already_registered" };
     }
     if (error?.code === "invalid_identity_claim") {
       try { sessionStorage.removeItem("cc.identity-claim"); } catch { /* storage unavailable */ }
@@ -507,13 +511,20 @@ export async function sendChat({ conference, via, messages, known = null }) {
 
 // ------------------------------------------------------------- DOM wiring
 
+/** A catalogue slug as the API validates it (shared/src/contract.ts): a malformed ?c= is never copied onto a link. */
+const CONFERENCE_SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
 export async function applyAppLinks(root = document) {
   const links = root.querySelectorAll("a[data-app-link]");
   if (!links.length) return;
   const { appBase } = await getConfig();
+  const slug = conferenceSlug();
+  const carry = CONFERENCE_SLUG.test(slug) ? slug : "";
   for (const a of links) {
     const p = a.dataset.appLink || "/";
-    a.href = appBase.replace(/\/+$/, "") + (p.startsWith("/") ? p : `/${p}`); // appBase "" on the site: "/schedule"
+    const href = appBase.replace(/\/+$/, "") + (p.startsWith("/") ? p : `/${p}`); // appBase "" on the site: "/schedule"
+    // The conference travels with the app link, so a page opened with ?c= never sends the visitor to an unnamed event.
+    a.href = carry ? withConference(href, carry) : href;
   }
 }
 

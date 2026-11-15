@@ -118,8 +118,9 @@ function fill(c) {
 
 /**
  * The talks panel. GET /api/catalog/topics?conference=<slug> is the only public read that says whether an event
- * has published talks (it lists the tags of those talks), so an empty answer is the "not published yet" state.
- * A route that cannot answer (no ?c=, the preview server, the API down) leaves the panel hidden: no guess.
+ * has published talks (it lists the tags of those talks), so an empty answer is the "not published yet" state:
+ * registration is closed for the event, and the register block gives way to one notice.
+ * A route that cannot answer (no ?c=, the preview server, the API down) leaves the page as it is: no guess.
  */
 async function fillTalks(c) {
   const section = document.querySelector('[data-talk-section]');
@@ -127,41 +128,49 @@ async function fillTalks(c) {
   if (!body) return;
   const found = await getConferenceTopics(c.slug);
   if (!found) return;
-  const nodes = [];
-  if (found.topics.length) {
-    const lead = document.createElement('p');
-    lead.className = 't-lead';
-    lead.textContent = `The talks published for ${c.name} cover these topics.`;
-    const list = document.createElement('ul');
-    list.className = 'cc-chips';
-    for (const topic of found.topics.slice(0, TALK_TOPIC_LIMIT)) {
-      const li = document.createElement('li');
-      li.textContent = topic;
-      list.append(li);
-    }
-    const row = document.createElement('p');
-    const search = document.createElement('a');
-    search.className = 'btn btn--primary';
-    search.setAttribute('data-app-link', withConference('/search', c.slug));
-    search.textContent = 'Search the talks';
-    row.append(search);
-    nodes.push(lead, list, row);
-  } else {
-    const notice = document.createElement('p');
-    notice.setAttribute('role', 'status');
-    notice.append(`Talks for ${c.name} have not been published yet.`);
-    if (c.url) {
-      const site = document.createElement('a');
-      site.href = c.url;
-      site.rel = 'noopener';
-      site.textContent = 'Open the official event site';
-      notice.append(' ', site, '.');
-    }
-    nodes.push(notice);
+  if (!found.topics.length) { showNotPublished(c); return; }
+  const lead = document.createElement('p');
+  lead.className = 't-lead';
+  lead.textContent = `The talks published for ${c.name} cover these topics.`;
+  const list = document.createElement('ul');
+  list.className = 'cc-chips';
+  for (const topic of found.topics.slice(0, TALK_TOPIC_LIMIT)) {
+    const li = document.createElement('li');
+    li.textContent = topic;
+    list.append(li);
   }
-  body.replaceChildren(...nodes);
+  const row = document.createElement('p');
+  const search = document.createElement('a');
+  search.className = 'btn btn--primary';
+  search.setAttribute('data-app-link', withConference('/search', c.slug));
+  search.textContent = 'Search the talks';
+  row.append(search);
+  body.replaceChildren(lead, list, row);
   section.hidden = false;
   applyAppLinks(section).catch(() => {});
+}
+
+/**
+ * No published talks: POST /api/register answers 409 schedule_not_published for this event, so the register button
+ * and its QR go, and the one notice says when registration opens. The (empty) talks panel stays hidden: one notice,
+ * never two, and never a placeholder talk.
+ */
+function showNotPublished(c) {
+  // css/conference.css gives both blocks `display: grid`, which beats `hidden`; the inline display wins.
+  $$('[data-found]').forEach((el) => { el.hidden = true; el.style.display = 'none'; });
+  const gate = document.querySelector('[data-reg-gate]');
+  if (!gate) return;
+  const site = document.createElement('a');
+  if (c.url) {
+    site.href = c.url;
+    site.rel = 'noopener';
+    site.textContent = 'Open the official event site';
+  } else {
+    site.href = CONFERENCES_HREF;
+    site.textContent = 'Open the conference list';
+  }
+  gate.hidden = false;
+  gate.replaceChildren(`Registration opens when ${c.name} publishes its talks. `, site, '.');
 }
 
 async function init() {

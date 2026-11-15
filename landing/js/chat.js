@@ -5,7 +5,7 @@
 
 import { drawQr } from "./qr.js";
 import { getConference, loadConferences } from "./conferences.js";
-import { completeSignup, fetchAccessToken, onReady, sendChat, sessionToken } from "./companion-api.js";
+import { completeSignup, fetchAccessToken, getConferenceTopics, onReady, sendChat, sessionToken } from "./companion-api.js";
 import { LIMITS, VIA_VALUES, createSelection, parseConfirmChoice, scriptedTurn, validateKnown, validateProfile } from "./chat-script.js";
 
 export const MAX_INPUT_CHARS = 1000;
@@ -17,6 +17,13 @@ const GROUP_LABELS = {
   topics: "Choose 1 to 6 topics",
   goal: "What you want out of the day",
   confirm: "Registration options",
+};
+
+/** Where each saved failure sends the visitor: the transcript keeps the link after a reload. */
+const FAILURE_LINKS = {
+  already_registered: { href: "/site/profile.html", text: "Back to sign in" },
+  identity_claim_invalid: { href: "/site/profile.html", text: "Sign in again" },
+  schedule_not_published: { href: "/site/#conferences", text: "Open the conference list" },
 };
 
 const humanise = (slug) => slug.replace(/-+/g, " ").replace(/\b\d{4}\b/g, "").replace(/\s+/g, " ").trim().replace(/^./, (c) => c.toUpperCase());
@@ -91,6 +98,53 @@ function showChooser(section) {
   section.dataset.state = "done";
 }
 
+/**
+ * The one notice for a conference that has not published its talks: registration opens when it does, with the
+ * official site (or the list) as the way out. The API refuses such a registration with 409 schedule_not_published.
+ */
+function notPublishedNotice(conference) {
+  return {
+    text: `Registration opens when ${conference.name} publishes its talks.`,
+    link: conference.url
+      ? { href: conference.url, text: "Open the official event site" }
+      : { href: "/site/#conferences", text: "Open the conference list" },
+  };
+}
+
+/** No published talks: the server would refuse the registration, so the conversation does not start. */
+function showNotPublished(section, conference) {
+  const { text, link } = notPublishedNotice(conference);
+  const a = document.createElement("a");
+  a.href = link.href;
+  a.rel = "noopener";
+  a.textContent = link.text;
+  const gate = section.querySelector("[data-chat-gate]");
+  const log = section.querySelector("[data-chat-log]");
+  if (gate) {
+    // The register page hides the log once the chat is done: its notice needs a place of its own.
+    const p = document.createElement("p");
+    p.setAttribute("role", "status");
+    p.append(`${text} `, a, ".");
+    gate.hidden = false;
+    gate.replaceChildren(p);
+  } else if (log) {
+    const boot = log.querySelector("[data-boot]");
+    if (boot) boot.remove();
+    const li = document.createElement("li");
+    li.className = "chat-msg";
+    li.dataset.role = "assistant";
+    const p = document.createElement("p");
+    p.append(`${text} `, a, ".");
+    li.append(p);
+    log.append(li);
+  }
+  const form = section.querySelector("[data-chat-form]");
+  if (form) form.hidden = true;
+  section.dataset.mode = "none";
+  section.dataset.gate = "not-published";
+  section.dataset.state = "done";
+}
+
 export async function bindChat(section) {
   if (section.dataset.chatBound) return;
   section.dataset.chatBound = "true";
@@ -129,8 +183,16 @@ export async function bindChat(section) {
 
   await loadConferences().catch(() => {});
   const confInfo = getConference(slug);
-  const conference = { slug, name: confInfo?.name ?? humanise(slug) };
+  const conference = { slug, name: confInfo?.name ?? humanise(slug), url: confInfo?.url ?? "" };
   const conferenceTopics = confInfo?.topics ?? [];
+
+  // Registration is open only for a conference whose talks are published: an empty topic list is the public signal
+  // (the server answers 409 schedule_not_published). A route that cannot answer (null) starts the chat as before.
+  const published = await getConferenceTopics(slug);
+  if (published && published.topics.length === 0) {
+    showNotPublished(section, conference);
+    return;
+  }
 
   // Quick-reply container: the page's [data-chat-choices], or one created just before the form.
   let choices = section.querySelector("[data-chat-choices]");
@@ -368,6 +430,24 @@ export async function bindChat(section) {
     // On the site this is the real sign-up; preview registration uses its own endpoint.
     const ticket = await completeSignup(conference, profile, { returning: Boolean(s.known) });
     if (ticket.source === "error") {
+      if (ticket.error === "schedule_not_published") {
+        // The server refused: this conference has no published talks. Same notice as the pre-chat gate.
+        const { text, link } = notPublishedNotice(conference);
+        const line = addMessage("assistant", text);
+        s.messages.push({ role: "assistant", content: text });
+        const a = document.createElement("a");
+        a.href = link.href;
+        a.rel = "noopener";
+        a.textContent = link.text;
+        line.append(a);
+        s.ticket = null;
+        s.error = ticket.error;
+        section.dataset.gate = "not-published";
+        persist();
+        lock(true);
+        setState("done");
+        return;
+      }
       const errors = {
         already_registered: {
           message: "That account already has a profile. Sign in again from your profile page.",
@@ -484,20 +564,22 @@ export async function bindChat(section) {
     for (const m of s.messages) addMessage(m.role, m.content);
     if (saved.mode === "claude" || saved.mode === "scripted") setMode(saved.mode);
     const checked = saved.done ? validateProfile(saved.profile) : null;
-    const savedError = ["already_registered", "identity_claim_invalid", "registration_failed"].includes(saved.error) ? saved.error : null;
+    const savedError = ["already_registered", "identity_claim_invalid", "registration_failed", "schedule_not_published"].includes(saved.error) ? saved.error : null;
     if (checked?.ok && savedError) {
       s.done = true;
       s.profile = checked.profile;
       s.error = savedError;
       if (savedError !== "registration_failed") {
         const line = log.lastElementChild;
-        if (line) {
+        const target = FAILURE_LINKS[savedError];
+        if (line && target) {
           const link = document.createElement("a");
-          link.href = "/site/profile.html";
-          link.textContent = savedError === "already_registered" ? "Back to sign in" : "Sign in again";
+          link.href = target.href;
+          link.textContent = target.text;
           line.append(link);
         }
       }
+      if (savedError === "schedule_not_published") section.dataset.gate = "not-published";
       lock(true);
       setState("done");
       return;

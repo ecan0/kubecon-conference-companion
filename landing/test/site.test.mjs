@@ -80,6 +80,24 @@ test("on the site, config is derived in the browser (no /api/config), appBase is
   });
 });
 
+test("applyAppLinks: the page's ?c= travels with every app link, keeping its own query and hash", async () => {
+  await onSite(realApi(), async () => {
+    const plain = { dataset: { appLink: "/schedule" }, href: "" };
+    const withQuery = { dataset: { appLink: "/search?mode=hybrid#top" }, href: "" };
+    const carried = { dataset: { appLink: "/search?c=old-slug" }, href: "" };
+    await applyAppLinks({ querySelectorAll: () => [plain, withQuery, carried] });
+    assert.equal(plain.href, "/schedule?c=pycon-us-2027");
+    assert.equal(withQuery.href, "/search?mode=hybrid&c=pycon-us-2027#top");
+    assert.equal(carried.href, "/search?c=pycon-us-2027", "the page's own slug wins over a stale one on the attribute");
+  }, { search: "?c=pycon-us-2027" });
+  // a malformed ?c= is not copied onto a link (the API's slug shape, shared/src/contract.ts)
+  await onSite(realApi(), async () => {
+    const a = { dataset: { appLink: "/schedule" }, href: "" };
+    await applyAppLinks({ querySelectorAll: () => [a] });
+    assert.equal(a.href, "/schedule");
+  }, { search: "?c=not%20a%20slug" });
+});
+
 test("getStatus reads the real /api/status on the site", async () => {
   await onSite((c) => (c.url === "/api/status" ? json({ status: "ok" }) : new Response("", { status: 404 })), async () => {
     assert.equal((await getStatus()).status, "ok");
@@ -162,6 +180,23 @@ test("signUp: an expired or invalid claim and a validation failure are reported,
     assert.deepEqual(result, { source: "error", error: "registration_failed" });
     assert.equal(sessionStorage.getItem(TOKEN_KEY), null);
   });
+});
+
+test("signUp: a conference with no published talks is reported as schedule_not_published, not a sign-in problem", async () => {
+  await onSite(realApi({ "POST /api/register": () => json({ error: "schedule_not_published" }, 409) }), async (calls) => {
+    const result = await signUp({ slug: "cn-2026" }, validProfile());
+    assert.deepEqual(result, { source: "error", error: "schedule_not_published" });
+    assert.equal(calls[0].body.conference, "cn-2026", "the register body names the conference");
+    assert.equal(sessionStorage.getItem(TOKEN_KEY), null);
+  });
+});
+
+test("toRegisterRequest: the page's ?c= supplies the conference when the caller passes none", async () => {
+  await onSite(realApi(), async () => {
+    assert.equal(toRegisterRequest(validProfile()).conference, "cn-2026");
+    assert.equal(toRegisterRequest(validProfile(), { name: "no slug" }).conference, "cn-2026");
+  }, { search: "?c=cn-2026" });
+  assert.equal("conference" in toRegisterRequest(validProfile()), false, "no event chosen: nothing is invented");
 });
 
 test("signUp: storeToken resets the offline session when the token changes, like the React app", async () => {

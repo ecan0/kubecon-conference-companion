@@ -27,11 +27,13 @@ if (section) {
 
   // ---------------------------------------------------------------- the mode line: says what is answering, nothing more
   const MODE_TEXT = { claude: "Answers by Claude Haiku", scripted: "Scripted questions", none: "Choose a conference first" };
+  // js/chat.js sets data-gate="not-published" when the conference has no published talks: registration is closed.
+  const GATE_TEXT = { "not-published": "Registration is not open until this conference publishes its talks" };
   const STATE_TEXT = { loading: "Starting the chat" };
   function syncStatus() {
     const mode = section.dataset.mode;
     const state = section.dataset.state;
-    if (modeEl) modeEl.textContent = MODE_TEXT[mode] ?? STATE_TEXT[state] ?? "Starting the chat";
+    if (modeEl) modeEl.textContent = GATE_TEXT[section.dataset.gate] ?? MODE_TEXT[mode] ?? STATE_TEXT[state] ?? "Starting the chat";
     if (waitEl) {
       let text = "";
       if (state === "waiting") text = $("[data-pending]", log) ? "The host is typing" : "Registering you";

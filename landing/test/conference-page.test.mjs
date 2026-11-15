@@ -9,6 +9,7 @@ class El {
     this.attrs = new Map();
     this.hidden = false;
     this.textContent = "";
+    this.style = {};
   }
   setAttribute(name, value) { this.attrs.set(name, String(value)); }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
@@ -35,6 +36,8 @@ function page({ search = "", appLinks = [] } = {}) {
   const event = new El("section");
   const qr = new El("div");
   const act = new El("div");
+  const gate = new El("p");
+  gate.hidden = true; // the markup starts hidden; js/conference.js fills it only when the talks are unpublished
   const talks = new El("section");
   talks.hidden = true; // the markup starts hidden; js/conference.js unhides it once it has something to say
   const talksBody = new El("div");
@@ -50,6 +53,7 @@ function page({ search = "", appLinks = [] } = {}) {
       if (sel === "[data-missing]") return missing;
       if (sel === "#event") return event;
       if (sel === "[data-talk-section]") return talks;
+      if (sel === "[data-reg-gate]") return gate;
       return null;
     },
     querySelectorAll(sel) {
@@ -59,7 +63,7 @@ function page({ search = "", appLinks = [] } = {}) {
       return [];
     },
   };
-  return { doc, h1, lead, missing, event, qr, act, talks, talksBody, search };
+  return { doc, h1, lead, missing, event, qr, act, gate, talks, talksBody, search };
 }
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
@@ -144,22 +148,38 @@ test("conference page talks: a conference with published talks shows their topic
   assert.deepEqual(chips.children.map((li) => li.textContent), ["kubernetes", "ai", "observability"]);
   assert.equal(row.children[0].textContent, "Search the talks");
   assert.equal(row.children[0].getAttribute("data-app-link"), "/search?c=kubecon-na-2026");
+  assert.equal(stub.gate.hidden, true, "a published event keeps its register block, not the notice");
+  assert.equal(stub.qr.hidden, false);
+  assert.equal(stub.act.hidden, false);
 });
 
-test("conference page talks: a conference with no published talks gets the notice and its official site", async () => {
+test("conference page talks: a conference with no published talks gets the register notice instead of a chat that refuses it", async () => {
   const stub = page({ search: "?c=pycon-us-2027" });
   await withApi(() => json({ topics: [] }), async (urls) => {
-    await load(stub, "talks-none", () => stub.talksBody.children.length > 0);
+    await load(stub, "talks-none", () => stub.gate.hidden === false);
     assert.deepEqual(urls, ["/api/catalog/topics?conference=pycon-us-2027"]);
   });
-  assert.equal(stub.talks.hidden, false);
-  assert.equal(stub.talksBody.children.length, 1, "no placeholder talk is rendered");
-  const notice = stub.talksBody.children[0];
-  assert.equal(notice.getAttribute("role"), "status");
-  assert.deepEqual(notice.children.map((n) => (typeof n === "string" ? n : n.textContent)), [
-    "Talks for PyCon US have not been published yet.", " ", "Open the official event site", ".",
-  ]);
-  assert.equal(notice.children[2].href, "https://us.pycon.org/2027/");
+  assert.equal(stub.talks.hidden, true, "the empty talks panel stays hidden: one notice, never two");
+  assert.equal(stub.talksBody.children.length, 0, "no placeholder talk is rendered");
+  assert.equal(stub.qr.hidden, true, "no registration QR for an event that cannot register");
+  assert.equal(stub.qr.style.display, "none", "display is inline because css gives the block its own display");
+  assert.equal(stub.act.hidden, true, "no register button either");
+  assert.equal(stub.act.style.display, "none");
+  assert.equal(stub.gate.hidden, false);
+  const [text, link, full] = stub.gate.children;
+  assert.equal(text, "Registration opens when PyCon US publishes its talks. ");
+  assert.equal(link.textContent, "Open the official event site");
+  assert.equal(link.href, "https://us.pycon.org/2027/");
+  assert.equal(full, ".");
+});
+
+test("conference page talks: an event with no official site points at the conference list instead", async () => {
+  const stub = page({ search: "?c=cloud-native-hackathon-slc-2026" });
+  await withApi(() => json({ topics: [] }), () => load(stub, "talks-none-no-url", () => stub.gate.hidden === false));
+  const [text, link] = stub.gate.children;
+  assert.equal(text, "Registration opens when Cloud Native Hackathon publishes its talks. ");
+  assert.equal(link.textContent, "Open the conference list");
+  assert.equal(link.href, "/site/#conferences");
 });
 
 test("conference page talks: when the route cannot answer, the panel stays hidden rather than guessing", async () => {
