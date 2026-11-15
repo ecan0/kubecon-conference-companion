@@ -13,9 +13,15 @@ class El {
   setAttribute(name, value) { this.attrs.set(name, String(value)); }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; }
   removeAttribute(name) { this.attrs.delete(name); }
-  // `a.href = …` reflects to the attribute, as it does in the DOM
+  // `a.href = …` and `a.search = …` reflect to the attribute, as they do in the DOM
   get href() { return this.getAttribute("href") ?? ""; }
   set href(value) { this.setAttribute("href", value); }
+  get search() { return new URL(this.href, "http://localhost:4310").search; }
+  set search(value) {
+    const u = new URL(this.href, "http://localhost:4310");
+    u.search = value;
+    this.setAttribute("href", /^https?:/.test(this.href) ? u.href : u.pathname + u.search + u.hash);
+  }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   querySelector() { return null; }

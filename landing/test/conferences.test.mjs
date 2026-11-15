@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { loadConferences, filterConferences, getConference, nextEvent, resetConferencesCache, FALLBACK_CONFERENCES, withConference, sameSiteTarget } from "../js/conferences.js";
+import { loadConferences, filterConferences, getConference, nextEvent, resetConferencesCache, FALLBACK_CONFERENCES, withConference, setConferenceQuery } from "../js/conferences.js";
 
 const data = JSON.parse(fs.readFileSync(new URL("../data/conferences.json", import.meta.url), "utf8"));
 const slugs = (l) => l.map((c) => c.slug);
@@ -163,12 +163,12 @@ test("withConference: keeps the path, adds c, keeps an existing query and hash",
   assert.equal(withConference("http://localhost:5173/schedule", "kubecon-na-2026"), "http://localhost:5173/schedule?c=kubecon-na-2026");
 });
 
-test("sameSiteTarget: same-site paths and local pages pass, every other scheme or host is refused", () => {
-  assert.equal(sameSiteTarget("/search?c=kubecon-na-2026"), "/search?c=kubecon-na-2026");
-  assert.equal(sameSiteTarget("register.html?c=kubecon-na-2026"), "register.html?c=kubecon-na-2026");
-  assert.equal(sameSiteTarget("/site/#conferences"), "/site/#conferences");
-  assert.equal(sameSiteTarget("http://localhost:5173/schedule?c=kubecon-na-2026"), "http://localhost:5173/schedule?c=kubecon-na-2026");
-  for (const bad of ["javascript:alert(1)", "JavaScript:alert(1)", "data:text/html,x", "vbscript:x", "//evil.example/x", "/\\evil.example", " /search", "", null, undefined]) {
-    assert.equal(sameSiteTarget(bad), null, String(bad));
-  }
+test("setConferenceQuery: adds c and via to the query and keeps the address and hash", () => {
+  const link = { search: "?q=gitops", hash: "#rooms" };
+  setConferenceQuery(link, "kubecon-na-2026", "github");
+  assert.equal(link.search, "q=gitops&c=kubecon-na-2026&via=github");
+  assert.equal(link.hash, "#rooms");
+  const bare = { search: "" };
+  setConferenceQuery(bare, "pycon-us-2027");
+  assert.equal(bare.search, "c=pycon-us-2027");
 });

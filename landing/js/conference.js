@@ -2,7 +2,7 @@
    not-found state for a slug that is not in the catalogue. Plain ES module; js/qr.js draws the QR on its own and
    reads ?c= itself, so this file only keeps the canvas's slug and every link in step.
    With no ?c= the page offers the conference list: no event is assumed. */
-import { loadConferences, getConference, withConference, sameSiteTarget, VENUE_TBA } from './conferences.js';
+import { loadConferences, getConference, withConference, setConferenceQuery, VENUE_TBA } from './conferences.js';
 import { applyAppLinks, getConferenceTopics } from './companion-api.js';
 
 const CHOOSER_TEXT = 'Choose a conference first.';
@@ -37,20 +37,13 @@ if (slug) {
   pointLinks(slug);
 }
 function pointLinks(s) {
-  $$('a[data-c-link]').forEach((a) => {
-    const via = a.getAttribute('data-via');
-    const target = sameSiteTarget(withConference(a.getAttribute('data-c-link') ?? '', s));
-    if (target) a.setAttribute('href', `${target}${via ? `&via=${encodeURIComponent(via)}` : ''}`);
-  });
+  $$('a[data-c-link]').forEach((a) => setConferenceQuery(a, s, a.getAttribute('data-via') || ''));
   /* the app pages take the conference in the query; the attribute is what js/companion-api.js rebuilds the href from */
   $$('a[data-app-link]').forEach((a) => {
-    const href = a.getAttribute('href') || a.getAttribute('data-app-link');
-    if (!href) return;
-    const next = sameSiteTarget(withConference(href, s));
-    const kept = sameSiteTarget(withConference(a.getAttribute('data-app-link') || href, s));
-    if (!next || !kept) return;
-    a.setAttribute('data-app-link', kept);
-    a.setAttribute('href', next);
+    const path = a.getAttribute('data-app-link');
+    if (!path) return;
+    a.setAttribute('data-app-link', withConference(path, s));
+    setConferenceQuery(a, s);
   });
 }
 

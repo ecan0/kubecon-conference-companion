@@ -255,8 +255,10 @@ export function withConference(href, slug) {
   return `${path}?${params}${hash}`;
 }
 
-/** A link target from the page or the URL: a same-site path or a local page only. A scheme (javascript:, data:), a protocol-relative URL or a backslash is refused, so the link keeps its server-rendered target. */
-export function sameSiteTarget(value) {
-  const v = String(value ?? '');
-  return /^(?:https?:\/\/[^\s\\"'<>]+|\/(?![/\\])[^\s\\"'<>]*|[a-z][a-z0-9-]*\.html(?:[?#][^\s\\"'<>]*)?)$/i.test(v) ? v : null;
+/** Puts c=<slug> (and an optional via) into a link's query. The link keeps its own address and hash: page text never becomes its href. */
+export function setConferenceQuery(a, slug, via = '') {
+  const params = new URLSearchParams(a.search);
+  params.set('c', slug);
+  if (via) params.set('via', via);
+  a.search = params.toString();
 }

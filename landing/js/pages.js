@@ -3,7 +3,7 @@
    (js/companion-api.js) auto-run. This file renders the finder, fills a conference page from ?c=,
    and drives the journey section's words, rail and scene control. */
 
-import { withConference, sameSiteTarget } from './conferences.js';
+import { setConferenceQuery } from './conferences.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -133,11 +133,7 @@ async function initConference() {
   };
   marks.forEach((el) => { const k = el.getAttribute('data-c'); if (k in val && val[k]) el.textContent = val[k]; });
   $$('[data-c-topics]').forEach((el) => { el.innerHTML = (c.topics || []).map((t) => `<li class="ic-chip">${esc(t)}</li>`).join(''); });
-  $$('a[data-c-link]').forEach((a) => {
-    const via = a.getAttribute('data-via');
-    const target = sameSiteTarget(withConference(a.getAttribute('data-c-link') ?? '', c.slug));
-    if (target) a.setAttribute('href', `${target}${via ? `&via=${encodeURIComponent(via)}` : ''}`);
-  });
+  $$('a[data-c-link]').forEach((a) => setConferenceQuery(a, c.slug, a.getAttribute('data-via') || ''));
   const base = document.title.split(':')[0];
   if (document.body.hasAttribute('data-conference-title')) document.title = `${c.name}: ${document.body.getAttribute('data-conference-title')}`;
   else if (base) document.title = `${c.name}, ${base}`;
@@ -146,12 +142,8 @@ async function initConference() {
 /* ---------------------------------------------------------------- sign-in links carry ?c= and &via= even before data loads */
 function initLinks() {
   const slug = new URLSearchParams(location.search).get('c') || '';
-  $$('a[data-c-link]').forEach((a) => {
-    const via = a.getAttribute('data-via');
-    const base = a.getAttribute('data-c-link') ?? '';
-    const target = slug ? sameSiteTarget(withConference(base, slug)) : sameSiteTarget(base);
-    if (target) a.setAttribute('href', `${target}${slug && via ? `&via=${encodeURIComponent(via)}` : ''}`);
-  });
+  if (!slug) return;
+  $$('a[data-c-link]').forEach((a) => setConferenceQuery(a, slug, a.getAttribute('data-via') || ''));
 }
 
 /* ---------------------------------------------------------------- journey HUD: the rail and counter follow whichever journey section is on screen.
