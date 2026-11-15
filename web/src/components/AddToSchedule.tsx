@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { ScheduleResponse } from "@cc/shared";
 import { api, getToken } from "../api.js";
+import { withConference } from "../conferenceLink.js";
 
 type ScheduleApi = Pick<typeof api, "getSchedule" | "saveSchedule">;
 type State = "idle" | "saving" | "added" | "already" | "conflict" | "register" | "error";
@@ -31,15 +32,15 @@ export function AddToSchedule({ talkId, schedule = api, hasSession = () => !!get
   }
 
   if (state === "register") {
-    return <p role="status"><a href={`/site/register.html${search}`}>Register</a> to add talks to your schedule.</p>;
+    return <p role="status"><a href={withConference("/site/register.html", search)}>Register</a> to add talks to your schedule.</p>;
   }
   return <div className="add-to-schedule">
     <button type="button" disabled={state === "saving" || state === "added" || state === "already"} onClick={onClick}>
       {state === "saving" ? "Adding…" : "Add to my schedule"}
     </button>
     <div aria-live="polite">
-      {state === "added" && <p>Added to your schedule. <Link to="/schedule">View schedule</Link></p>}
-      {state === "already" && <p>This talk is already in your schedule. <Link to="/schedule">View schedule</Link></p>}
+      {state === "added" && <p>Added to your schedule. <Link to={withConference("/schedule", search)}>View schedule</Link></p>}
+      {state === "already" && <p>This talk is already in your schedule. <Link to={withConference("/schedule", search)}>View schedule</Link></p>}
       {state === "conflict" && <p role="alert">This talk overlaps one already in your schedule, so it was not added.</p>}
       {state === "error" && <p role="alert">Your schedule could not be updated. Please try again.</p>}
     </div>

@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { SearchFacets, SearchMode, SearchResponse } from "@cc/shared";
 import { ApiError, api } from "../api.js";
 import { talkHref } from "../talksApi.js";
+import { withConference } from "../conferenceLink.js";
 import { SuggestInput } from "../components/SuggestInput.js";
 import { EmptyState, ErrorState, NoConferenceState, UnpublishedTalksState, conferenceSlug, useConferenceEntry } from "../components/PageState.js";
 import { SearchFilters } from "../components/SearchFilters.js";
@@ -127,7 +128,7 @@ export function Search() {
           <p>Try broader or fewer words, for example “security” instead of a full sentence, check the spelling, or clear some filters.</p>
         </EmptyState>}
         <ol className="talk-results">{results[mode]!.hits.map(({ talk, score }) => <li key={talk.id}>
-          <h3><a href={talkHref(talk.id)}>{talk.title}</a></h3><p>{talk.speaker} · {talk.room}</p><p>{talk.abstract}</p>
+          <h3><a href={withConference(talkHref(talk.id), search)}>{talk.title}</a></h3><p>{talk.speaker} · {talk.room}</p><p>{talk.abstract}</p>
           <p>Score: {score.toFixed(2)}</p>
         </li>)}</ol>
         {debug && !(mode === "hybrid" && hybridFellBack) && <details><summary>SQL query</summary>

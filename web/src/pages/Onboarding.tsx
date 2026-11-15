@@ -4,6 +4,7 @@ import type { ExperienceLevel, SearchHit } from "@cc/shared";
 import { api } from "../api.js";
 import { NoConferenceState, UnpublishedTalksState, conferenceSlug, useConferenceEntry } from "../components/PageState.js";
 import { rememberSkipped } from "../skippedTalks.js";
+import { withConference } from "../conferenceLink.js";
 import { TopicChoices } from "./TopicChoices.js";
 import "./attendee.css";
 
@@ -56,7 +57,7 @@ export function Onboarding() {
         return;
       }
       rememberSkipped((await api.saveSchedule({ talkIds })).skipped);
-      navigate(`/schedule${search}`);
+      navigate(withConference("/schedule", search));
     } catch {
       setError("We could not build your schedule. Please try again. If your session expired, register again.");
     } finally { setPending(false); }

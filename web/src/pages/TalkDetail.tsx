@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import type { RelatedTalksResponse, Talk } from "@cc/shared";
 import { AddToSchedule } from "../components/AddToSchedule.js";
+import { withConference } from "../conferenceLink.js";
 import { fetchRelated, fetchTalk, talkHref, TalksError } from "../talksApi.js";
 import "./discovery.css";
 
@@ -19,6 +20,7 @@ const DEFAULT_LOADER: Loader = { talk: fetchTalk, related: fetchRelated };
  */
 export function TalkDetail({ load = DEFAULT_LOADER }: { load?: Loader }) {
   const { id = "" } = useParams();
+  const { search } = useLocation();
   const [talk, setTalk] = useState<Talk | null>(null);
   const [talkState, setTalkState] = useState<"loading" | "ok" | "missing" | "error">("loading");
   const [related, setRelated] = useState<RelatedTalksResponse | null>(null);
@@ -40,7 +42,7 @@ export function TalkDetail({ load = DEFAULT_LOADER }: { load?: Loader }) {
 
   if (talkState === "loading") return <section className="discovery"><p role="status">Loading talk…</p></section>;
   if (talkState === "missing") {
-    return <section className="discovery"><h1>Talk not found</h1><p>We could not find that talk. <Link to="/search">Search talks</Link>.</p></section>;
+    return <section className="discovery"><h1>Talk not found</h1><p>We could not find that talk. <Link to={withConference("/search", search)}>Search talks</Link>.</p></section>;
   }
   if (talkState === "error" || !talk) {
     return <section className="discovery"><p role="alert">This talk could not be loaded. Please reload to try again.</p></section>;
@@ -68,7 +70,7 @@ export function TalkDetail({ load = DEFAULT_LOADER }: { load?: Loader }) {
       {relatedState === "ok" && related && related.related.length === 0 && <p>No related talks found.</p>}
       {relatedState === "ok" && related && related.related.length > 0 && <ol className="related-list">
         {related.related.map(({ talk: rel, sharedTags }) => <li key={rel.id}>
-          <Link to={talkHref(rel.id)}>{rel.title}</Link>
+          <Link to={withConference(talkHref(rel.id), search)}>{rel.title}</Link>
           <br />{rel.speaker} · {rel.room} · <time dateTime={rel.start}>{hm(rel.start)}</time>
           <br />{sharedTags.length > 0 ? `Why: shares ${sharedTags.join(", ")}` : "Why: similar topic"}
         </li>)}

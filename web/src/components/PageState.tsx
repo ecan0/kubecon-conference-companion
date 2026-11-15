@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { isConferenceSlug } from "@cc/shared";
 import { api, ApiError } from "../api.js";
+import { withConference } from "../conferenceLink.js";
 import "./page-state.css";
 
 /**
@@ -32,7 +33,7 @@ export function ErrorState({ children, onRetry, retryLabel = "Try again" }: {
 export function SessionExpiredState() {
   const { search } = useLocation();
   return <div className="page-state page-state-error">
-    <p role="alert">Your session has expired. <a href={`/site/register.html${search}`}>Register again</a> to continue.</p>
+    <p role="alert">Your session has expired. <a href={withConference("/site/register.html", search)}>Register again</a> to continue.</p>
   </div>;
 }
 

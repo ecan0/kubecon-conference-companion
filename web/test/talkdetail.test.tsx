@@ -48,6 +48,15 @@ it("shows speaker, abstract, track, room, time, tags and related talks with link
   expect(screen.getByText(/Why: similar topic/)).toBeTruthy();
 });
 
+it("linked talks keep the conference from the talk's address", async () => {
+  const load = {
+    talk: vi.fn().mockResolvedValue({ talk: mk("src") }),
+    related: vi.fn().mockResolvedValue(related([{ talk: mk("a"), score: 2, sharedTags: [] }])),
+  };
+  renderAt(load, "/talks/src?c=kubecon-na-2026");
+  expect((await screen.findByRole("link", { name: "Talk a" })).getAttribute("href")).toBe("/talks/a?c=kubecon-na-2026");
+});
+
 it("says so when a talk does not exist", async () => {
   renderAt({ talk: vi.fn().mockRejectedValue(new TalksError(404)), related: vi.fn().mockRejectedValue(new TalksError(404)) });
   expect(await screen.findByRole("heading", { level: 1, name: "Talk not found" })).toBeTruthy();
@@ -146,4 +155,15 @@ it("add to schedule: the register link keeps the conference", () => {
     <AddToSchedule talkId="src" hasSession={() => false} schedule={{ getSchedule: vi.fn(), saveSchedule: vi.fn() }} />
   </MemoryRouter>);
   expect(screen.getByRole("link", { name: "Register" }).getAttribute("href")).toBe("/site/register.html?c=kubecon-na-2026");
+});
+
+it("add to schedule: view schedule keeps the conference", async () => {
+  setToken("t");
+  const api = { getSchedule: vi.fn().mockResolvedValue(sched("a")), saveSchedule: vi.fn().mockResolvedValue(sched("a", "src")) };
+  render(<MemoryRouter initialEntries={["/talks/src?c=kubecon-na-2026"]}>
+    <AddToSchedule talkId="src" schedule={api} />
+  </MemoryRouter>);
+  screen.getByRole("button", { name: "Add to my schedule" }).click();
+  expect((await screen.findByRole("link", { name: "View schedule" })).getAttribute("href"))
+    .toBe("/schedule?c=kubecon-na-2026");
 });
