@@ -39,7 +39,10 @@ export async function testDb(): Promise<Db> {
   return db;
 }
 
+/** Conference every fixture talk is seeded under, so scoped queries have one to point at. */
+export const TEST_CONFERENCE = "test-conf";
+
 /** Inserts talks with hashed passage embeddings (the offline embedder the tests use). */
-export async function insertTalks(db: Db, talks: CatalogTalk[]): Promise<void> {
-  await seedTalks(db, new LocalHashEmbedder(), talks);
+export async function insertTalks(db: Db, talks: CatalogTalk[], conference = TEST_CONFERENCE): Promise<void> {
+  await seedTalks(db, new LocalHashEmbedder(), talks, conference);
 }

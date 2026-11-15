@@ -8,6 +8,7 @@ import { runQuery } from "../search/errors.js";
 import { TALK_COLUMNS } from "../search/queries.js";
 import { toTalk, type TalkRow } from "../search/service.js";
 import { DEFAULT_RATE_LIMITS, applyRateLimit, limitFor, type RouteLimit } from "../http/rateLimit.js";
+import { readConference } from "../http/conference.js";
 import { organizerAuthorizer } from "./clusters.js";
 
 /** Upper bound on talks read for one placement run. */
@@ -27,12 +28,13 @@ export interface RoomPlacementRouteDeps {
   now?: () => Date;
 }
 
-async function loadPlacement(deps: RoomPlacementRouteDeps, at: Date): Promise<RoomPlacementResponse> {
+async function loadPlacement(deps: RoomPlacementRouteDeps, at: Date, conference: string): Promise<RoomPlacementResponse> {
   // The aggregate is the k >= 5 suppressed output; placement only ever sees that, never attendee rows.
   const aggregate = await aggregateInterests(deps.db, at);
   const rows = await runQuery<TalkRow>(
     deps.db,
-    `select ${TALK_COLUMNS} from talks order by start_at asc nulls last, id limit ${MAX_PLACEMENT_TALKS}`,
+    `select ${TALK_COLUMNS} from talks where conference = $1 order by start_at asc nulls last, id limit ${MAX_PLACEMENT_TALKS}`,
+    [conference],
   );
   const talks = rows.map((r) => toTalk(r));
   return planPlacement({
@@ -49,7 +51,7 @@ export function registerRoomPlacementRoutes(root: FastifyInstance, deps: RoomPla
   root.register(async (app) => {
     await applyRateLimit(app);
     const now = deps.now ?? (() => new Date());
-    let cached: { at: number; value: RoomPlacementResponse } | undefined;
+    const cached = new Map<string, { at: number; value: RoomPlacementResponse }>();
     const authorize = organizerAuthorizer({
       organizerKey: deps.organizerKey ?? (process.env.ORGANIZER_KEY || undefined),
       nodeEnv: deps.nodeEnv ?? process.env.NODE_ENV,
@@ -64,13 +66,21 @@ export function registerRoomPlacementRoutes(root: FastifyInstance, deps: RoomPla
             status = reply.statusCode;
             return reply;
           }
+          const conference = readConference(req, reply);
+          if (conference === null) {
+            status = reply.statusCode;
+            return reply;
+          }
           // Checked after authorization, so the cache never serves an unauthorized caller.
-          if (!cached || now().getTime() - cached.at >= PLACEMENT_CACHE_MS) {
-            cached = { at: now().getTime(), value: await loadPlacement(deps, now()) };
+          const hit = cached.get(conference);
+          let value = hit && now().getTime() - hit.at < PLACEMENT_CACHE_MS ? hit.value : undefined;
+          if (!value) {
+            value = await loadPlacement(deps, now(), conference);
+            cached.set(conference, { at: now().getTime(), value });
           }
           reply.header("cache-control", "no-store");
           status = 200;
-          return cached.value;
+          return value;
         } catch {
           // Driver errors can contain query text; neither recorded nor echoed.
           status = 502;

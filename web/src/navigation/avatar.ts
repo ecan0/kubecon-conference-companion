@@ -2,7 +2,7 @@
 
 export interface Avatar { skin: string; hair: string; shirt: string; pants: string; hat: boolean }
 export const AVATAR_KEY = "cc.avatar.v1";
-export const DEFAULT_AVATAR: Avatar = { skin: "f1c9a5", hair: "5a3a1e", shirt: "c6f19d", pants: "24324a", hat: false };
+export const DEFAULT_AVATAR: Avatar = { skin: "f1c9a5", hair: "5a3a1e", shirt: "93eaff", pants: "24324a", hat: false };
 
 const HEX = /^[0-9a-fA-F]{6}$/;
 

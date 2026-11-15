@@ -9,6 +9,8 @@ interface Props {
   id: string;
   value: string;
   onChange: (value: string) => void;
+  /** Conference the suggestions belong to; nothing is looked up without one. */
+  conference: string | null;
   maxLength?: number;
   placeholder?: string;
   load?: typeof fetchSuggestions;
@@ -21,7 +23,7 @@ interface Props {
  * highlighted option, Enter picks it, Escape closes. Suggestions are an
  * enhancement: a failed request just closes the list, it never shows an error.
  */
-export function SuggestInput({ id, value, onChange, maxLength, placeholder, load = fetchSuggestions, debounceMs = SUGGEST_DEBOUNCE_MS }: Props) {
+export function SuggestInput({ id, value, onChange, conference, maxLength, placeholder, load = fetchSuggestions, debounceMs = SUGGEST_DEBOUNCE_MS }: Props) {
   const listId = useId();
   const [items, setItems] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -37,16 +39,16 @@ export function SuggestInput({ id, value, onChange, maxLength, placeholder, load
       picked.current = null;
     }
     const q = value.trim();
-    if (q.length < MIN_CHARS) { setItems([]); setOpen(false); return; }
+    if (!conference || q.length < MIN_CHARS) { setItems([]); setOpen(false); return; }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      load(q, controller.signal).then(
+      load(q, controller.signal, conference).then(
         (next) => { setItems(next); setActive(-1); setOpen(next.length > 0); },
         () => { if (!controller.signal.aborted) { setItems([]); setOpen(false); } },
       );
     }, debounceMs);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [value, load, debounceMs]);
+  }, [value, load, debounceMs, conference]);
 
   function pick(item: Suggestion) {
     picked.current = item.text;

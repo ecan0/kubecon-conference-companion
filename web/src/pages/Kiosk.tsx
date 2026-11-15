@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ScanResponse } from "@cc/shared";
-import { api } from "../api.js";
+import { api, conferenceFromLocation } from "../api.js";
 import { RoomActivityBadge, useRoomActivity } from "./RoomActivity.js";
 import "./kiosk.css";
 
@@ -31,7 +31,7 @@ interface CameraScanner {
  * not depend on colour, and is announced through a live region.
  */
 export function Kiosk() {
-  const { activity, refresh } = useRoomActivity();
+  const { activity, refresh } = useRoomActivity(conferenceFromLocation());
   const [token, setToken] = useState("");
   const [room, setRoom] = useState("");
   const [result, setResult] = useState<ScanResponse | null>(null);

@@ -86,6 +86,8 @@ export interface RunSearchOptions {
   text: string;
   mode: SearchMode;
   size: number;
+  /** Catalogue event to search: every leg, hit and facet is scoped to it. */
+  conference: string;
   filters?: SearchFilters;
   /** Adds track/level/day facet counts (GET /api/search only). */
   facets?: boolean;
@@ -116,9 +118,9 @@ export async function runSearch(db: Db, embedder: Embedder, opts: RunSearchOptio
     if (opts.mode === "hybrid") {
       // Same expanded text for both legs: the keyword leg ranks it, the semantic leg embeds it.
       const vector = await withSpan("embed", {}, () => embedder.embed(expandedText(opts.text, tuning), "query"));
-      plan = buildHybridPlan(opts.text, vectorLiteral(vector), opts.size, opts.filters, tuning);
+      plan = buildHybridPlan(opts.text, vectorLiteral(vector), opts.size, opts.conference, opts.filters, tuning);
     } else {
-      plan = buildKeywordPlan(opts.text, opts.size, opts.filters, tuning);
+      plan = buildKeywordPlan(opts.text, opts.size, opts.conference, opts.filters, tuning);
     }
     const facetSql = opts.facets ? facetQuery(plan) : undefined;
     const [rows, facetRows] = await Promise.all([
@@ -142,10 +144,11 @@ export async function searchTalks(
   q: string,
   mode: SearchMode,
   size: number,
+  conference: string,
   debug: boolean,
   filters: SearchFilters = {},
 ): Promise<SearchResponse> {
-  const r = await runSearch(db, embedder, { text: q, mode, size, filters, facets: true });
+  const r = await runSearch(db, embedder, { text: q, mode, size, conference, filters, facets: true });
   return {
     q,
     mode,
@@ -160,6 +163,7 @@ export async function onboardingSearch(
   db: Db,
   embedder: Embedder,
   answers: OnboardingAnswers,
+  conference: string,
   debug: boolean,
 ): Promise<OnboardingResponse> {
   const text = onboardingText(answers);
@@ -169,6 +173,7 @@ export async function onboardingSearch(
     text,
     mode: "hybrid",
     size: ONBOARDING_RESULT_SIZE,
+    conference,
     filters: onboardingFilters(answers),
   });
   return { query, hits: r.hits, ...(debug ? { debug: r.debug } : {}) };

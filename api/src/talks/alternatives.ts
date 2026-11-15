@@ -19,7 +19,7 @@ const COLUMNS = TALK_COLUMNS.split(", ").map((c) => `t.${c}`).join(", ");
  */
 export const ALTERNATIVES_SQL = `
   select ${COLUMNS}, 1 - (t.embedding <=> f.embedding) as score
-  from talks f join talks t on t.id <> f.id
+  from talks f join talks t on t.id <> f.id and t.conference = f.conference
   where f.id = $1 and f.embedding is not null and t.embedding is not null
     and t.start_at < f.end_at and t.end_at > f.start_at
     and (coalesce(f.room, '') = '' or t.room is distinct from f.room)
@@ -30,7 +30,7 @@ export const ALTERNATIVES_SQL = `
 /** Related talks: the same similarity ranking, at any time, excluding only the talk itself and non-session tracks. */
 export const RELATED_SQL = `
   select ${COLUMNS}, 1 - (t.embedding <=> f.embedding) as score
-  from talks f join talks t on t.id <> f.id
+  from talks f join talks t on t.id <> f.id and t.conference = f.conference
   where f.id = $1 and f.embedding is not null and t.embedding is not null
     and not (t.track = any($2::text[]))
   order by t.embedding <=> f.embedding, t.id

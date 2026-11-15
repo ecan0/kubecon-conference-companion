@@ -2,8 +2,6 @@
 // The first entry is the event this app was built for; the others are real events with their organisers' public details
 // (`url` is the official site). `tentative: true` marks dates that the organisers have not confirmed yet.
 
-export const DEFAULT_SLUG = "cloud-native-hackathon-slc-2026";
-
 /** The venue text for an event whose organisers have not named a venue yet. */
 export const VENUE_TBA = "Venue to be announced";
 
@@ -22,6 +20,19 @@ export const FALLBACK_CONFERENCES = [
     capacity: 200,
     assumed: false,
     wifi: { ssid: "CloudNativeHack-Guest", security: "WPA", password: "shipit-slc-2026", assumed: true },
+  },
+  {
+    slug: "kubecon-na-2026",
+    name: "KubeCon + CloudNativeCon North America 2026",
+    startDate: "2026-11-09",
+    endDate: "2026-11-12",
+    city: "Salt Lake City",
+    district: "Downtown",
+    venue: "Hyatt Regency Salt Lake City",
+    topics: ["kubernetes", "ai", "oss", "end-user-talk", "maintainer-track"],
+    summary: "The Linux Foundation's flagship cloud native conference: talks, workshops and co-located events on Kubernetes and the CNCF projects.",
+    assumed: false,
+    url: "https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/",
   },
   {
     slug: "aws-reinvent-2026",
@@ -230,4 +241,24 @@ function inMonth(c, month) {
 /** Looks a conference up by slug in the loaded list (or the inlined copy before it has loaded). */
 export function getConference(slug) {
   return (cache ?? FALLBACK_CONFERENCES).find((c) => c.slug === slug);
+}
+
+/** The same path, query and hash with `c=<slug>` set, so a link keeps the conference the visitor is looking at. */
+export function withConference(href, slug) {
+  const hashAt = href.indexOf("#");
+  const hash = hashAt === -1 ? "" : href.slice(hashAt);
+  const beforeHash = hashAt === -1 ? href : href.slice(0, hashAt);
+  const queryAt = beforeHash.indexOf("?");
+  const path = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt);
+  const params = new URLSearchParams(queryAt === -1 ? "" : beforeHash.slice(queryAt + 1));
+  params.set("c", slug);
+  return `${path}?${params}${hash}`;
+}
+
+/** Puts c=<slug> (and an optional via) into a link's query. The link keeps its own address and hash: page text never becomes its href. */
+export function setConferenceQuery(a, slug, via = '') {
+  const params = new URLSearchParams(a.search);
+  params.set('c', slug);
+  if (via) params.set('via', via);
+  a.search = params.toString();
 }

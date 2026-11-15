@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("production worker restores a session schedule offline, keeps QR fresh and caches no secrets", async ({ page, context }) => {
   await page.addInitScript(() => { if (!sessionStorage.getItem("cc.token")) sessionStorage.setItem("cc.token", "synthetic-session-secret"); });
-  await page.goto("/schedule");
+  await page.goto("/schedule?c=kubecon-na-2026");
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await page.reload();
@@ -50,7 +50,7 @@ test("production worker restores a session schedule offline, keeps QR fresh and 
   expect(forbiddenKeys).toEqual([]);
   // A second tab has no namespace for this attendee's cached response.
   const other = await context.newPage();
-  await other.goto("/schedule");
+  await other.goto("/schedule?c=kubecon-na-2026");
   await expect(other.getByRole("heading", { name: "Synthetic offline schedule" })).toHaveCount(0);
   await expect(other.getByRole("link", { name: "Register now" })).toBeVisible();
 });
@@ -58,7 +58,7 @@ test("production worker restores a session schedule offline, keeps QR fresh and 
 for (const failure of ["expired cache", "authentication rejected"] as const) {
   test(`does not restore a schedule after ${failure}`, async ({ page, context }) => {
     await page.addInitScript(() => { if (!sessionStorage.getItem("cc.token")) sessionStorage.setItem("cc.token", "synthetic-session"); });
-    await page.goto("/schedule");
+    await page.goto("/schedule?c=kubecon-na-2026");
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
     await page.reload();

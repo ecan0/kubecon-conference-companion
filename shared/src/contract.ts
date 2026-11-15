@@ -24,6 +24,20 @@ export interface ApiError {
   message?: string;
 }
 
+/**
+ * Catalogue conference slug (the `slug` in landing/data/conferences.json). Every
+ * catalogue route takes it as the `conference` query parameter and answers 400
+ * `{ error: "conference_required" }` without it: there is no default event.
+ */
+export const CONFERENCE_SLUG_PATTERN = "^[a-z0-9][a-z0-9-]{0,63}$";
+
+const CONFERENCE_SLUG_RE = new RegExp(CONFERENCE_SLUG_PATTERN);
+
+/** True when `v` is a catalogue conference slug. */
+export function isConferenceSlug(v: unknown): v is string {
+  return typeof v === "string" && CONFERENCE_SLUG_RE.test(v);
+}
+
 /** Minimum number of attendees in a cluster before it may be displayed. */
 export const MIN_CLUSTER_SIZE = 5;
 
@@ -449,8 +463,11 @@ export type AuthCallbackResponse = AuthCallbackResponseBase & (
 // ---------------------------------------------------------------- route table
 
 export const routes = {
+  /** Catalog route. Query: `conference` (required). */
   roomOccupancy: { method: "GET", path: "/api/rooms/occupancy" },
+  /** Catalog route. Query: `conference` (required). */
   roomPlacement: { method: "GET", path: "/api/rooms/placement" },
+  /** Catalog route. Query: `conference` (required). */
   catalogTopics: { method: "GET", path: "/api/catalog/topics" },
   health: { method: "GET", path: "/healthz" },
   status: { method: "GET", path: "/api/status" },
@@ -458,8 +475,11 @@ export const routes = {
   me: { method: "GET", path: "/api/me" },
   /** Bearer session token. Deletes the caller's profile, saved schedule and entitlement; 204 with no body, 401 if already gone. */
   deleteMe: { method: "DELETE", path: "/api/me" },
+  /** Catalog route. Query: `conference` (required). */
   onboarding: { method: "POST", path: "/api/onboarding" },
+  /** Catalog route. Query: `conference` (required), plus the optional search filters. */
   search: { method: "GET", path: "/api/search" },
+  /** Query: `conference` (required only with `answers` in the body; a `talkIds` save is a by-id lookup). */
   saveSchedule: { method: "POST", path: "/api/schedule" },
   getSchedule: { method: "GET", path: "/api/schedule" },
   exportCalendar: { method: "GET", path: "/api/schedule.ics" },

@@ -22,13 +22,16 @@ export const LEVEL_FACET_SIZE = 5;
  */
 export function facetQuery(plan: SearchPlan): SqlQuery {
   const offset = `$${plan.params.length + 1}::interval`;
+  // The candidates are already scoped; repeating the predicate on the join is a
+  // cheap guard that the counts can never leave the plan's conference.
+  const scope = `t.conference = $${plan.params.length + 2}`;
   const text =
     `${plan.withClause} ` +
-    `select 'track' as facet, t.track as value, count(*)::int as n from cand join talks t on t.id = cand.id where t.track <> '' group by t.track ` +
-    `union all select 'level', t.level, count(*)::int from cand join talks t on t.id = cand.id where t.level is not null group by t.level ` +
+    `select 'track' as facet, t.track as value, count(*)::int as n from cand join talks t on t.id = cand.id where t.track <> '' and ${scope} group by t.track ` +
+    `union all select 'level', t.level, count(*)::int from cand join talks t on t.id = cand.id where t.level is not null and ${scope} group by t.level ` +
     `union all select 'day', to_char((t.start_at at time zone 'UTC') + ${offset}, 'YYYY-MM-DD'), count(*)::int ` +
-    `from cand join talks t on t.id = cand.id where t.start_at is not null group by 2`;
-  return { text, params: [...plan.params, EVENT_UTC_OFFSET] };
+    `from cand join talks t on t.id = cand.id where t.start_at is not null and ${scope} group by 2`;
+  return { text, params: [...plan.params, EVENT_UTC_OFFSET, plan.conference] };
 }
 
 export interface FacetRow {

@@ -4,7 +4,7 @@ import { loadConfig } from "../src/config.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
 import { buildServer } from "../src/server.js";
 import { parseFacets, parseSearchFilters } from "../src/search/facets.js";
-import { mk, recordingDb, seededDb } from "./search-fixtures.js";
+import { CONFERENCE, mk, recordingDb, seededDb } from "./search-fixtures.js";
 
 describe("parseFacets", () => {
   it("orders tracks by count then name, levels likewise, days chronologically, and skips empty or malformed rows", () => {
@@ -65,7 +65,7 @@ describe("GET /api/search with filters and facets", () => {
     return { db, app: buildServer(loadConfig({}), { db, embedder: new LocalHashEmbedder() }) };
   }
   const search = async (app: ReturnType<typeof buildServer>, qs: string) => {
-    const res = await app.inject({ method: "GET", url: `/api/search?${qs}` });
+    const res = await app.inject({ method: "GET", url: `/api/search?${qs}&conference=${CONFERENCE}` });
     expect(res.statusCode).toBe(200);
     return res.json() as SearchResponse;
   };
@@ -109,7 +109,7 @@ describe("GET /api/search with filters and facets", () => {
 
   it("rejects bad filters with 400 before touching the database", async () => {
     const { db, app } = await setup();
-    const res = await app.inject({ method: "GET", url: "/api/search?q=x&level=guru" });
+    const res = await app.inject({ method: "GET", url: `/api/search?q=x&level=guru&conference=${CONFERENCE}` });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: "invalid_request" });
     expect(db.statements).toHaveLength(0);

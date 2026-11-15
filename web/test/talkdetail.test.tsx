@@ -140,3 +140,10 @@ it("add to schedule: asks to register without a session or on 401", async () => 
   screen.getByRole("button").click();
   expect(await screen.findByRole("link", { name: "Register" })).toBeTruthy();
 });
+
+it("add to schedule: the register link keeps the conference", () => {
+  render(<MemoryRouter initialEntries={["/talks/src?c=kubecon-na-2026"]}>
+    <AddToSchedule talkId="src" hasSession={() => false} schedule={{ getSchedule: vi.fn(), saveSchedule: vi.fn() }} />
+  </MemoryRouter>);
+  expect(screen.getByRole("link", { name: "Register" }).getAttribute("href")).toBe("/site/register.html?c=kubecon-na-2026");
+});

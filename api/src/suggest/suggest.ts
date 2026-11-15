@@ -29,6 +29,7 @@ export const SUGGEST_SQL = `
       (select count(*) from unnest($1::text[]) w where (' ' || lower(t.speaker)) like '% ' || w || '%') as speaker_hits,
       (select coalesce(max(word_similarity(w, t.title)), 0) from unnest($1::text[]) w where length(w) >= ${FUZZY_MIN_LENGTH}) as fuzzy
     from talks t
+    where t.conference = $2
   ) s
   where title_hits + speaker_hits > 0 or fuzzy >= ${FUZZY_THRESHOLD}
   order by 2 * title_hits + speaker_hits + 0.5 * fuzzy desc, title, id
@@ -42,10 +43,10 @@ function speakerMatches(speaker: string, q: string): boolean {
   return words(q).some((w) => name.some((n) => n.startsWith(w)));
 }
 
-export async function suggest(db: Db, q: string): Promise<Suggestion[]> {
+export async function suggest(db: Db, q: string, conference: string): Promise<Suggestion[]> {
   const typed = [...new Set(words(q))].slice(0, MAX_WORDS);
   if (typed.length === 0) return [];
-  const rows = await runQuery<{ id: string; title: string; speaker: string | null }>(db, SUGGEST_SQL, [typed]);
+  const rows = await runQuery<{ id: string; title: string; speaker: string | null }>(db, SUGGEST_SQL, [typed, conference]);
   const out: Suggestion[] = [];
   const seen = new Set<string>();
   const add = (kind: Suggestion["kind"], text: string) => {

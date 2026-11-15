@@ -16,6 +16,8 @@ create extension if not exists pg_trgm;
 
 create table if not exists talks (
   id text primary key,
+  -- Catalogue event the talk belongs to (conferences.json slug); every query scopes to one.
+  conference text not null,
   title text not null,
   abstract text not null default '',
   speaker text not null default '',
@@ -99,10 +101,22 @@ create or replace function immutable_array_to_string(a text[], sep text) returns
   language sql immutable parallel safe as $$ select array_to_string(a, sep) $$;
 `;
 
+/**
+ * Adds `talks.conference` to a database created before talks were scoped per
+ * conference, and backfills the existing (KubeCon NA 2026) catalogue. Idempotent:
+ * `add column if not exists` and the index guard make a second run a no-op.
+ */
+const TALKS_CONFERENCE_SQL = `
+alter table talks add column if not exists conference text;
+update talks set conference = 'kubecon-na-2026' where conference is null;
+alter table talks alter column conference set not null;
+create index if not exists talks_conference_start_idx on talks (conference, start_at);
+`;
+
 /** Creates the extensions, tables and indexes that are missing. Safe to run repeatedly and concurrently at start. */
 export async function migrate(db: Db): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.query("select pg_advisory_xact_lock(7270001)");
-    await tx.exec(`create extension if not exists pg_trgm;${IMMUTABLE_HELPER_SQL}${SCHEMA_SQL}`);
+    await tx.exec(`create extension if not exists pg_trgm;${IMMUTABLE_HELPER_SQL}${SCHEMA_SQL}${TALKS_CONFERENCE_SQL}`);
   });
 }

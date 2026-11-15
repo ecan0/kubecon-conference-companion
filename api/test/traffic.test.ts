@@ -149,7 +149,7 @@ describe("runTraffic", () => {
     const api = fakeApi();
     const out: string[] = [];
     const stats = await runTraffic({
-      url: "http://127.0.0.1:18085/", minutes: 3, rps: 2, fetch: api.fetch, now: c.now, sleep: c.sleep, rand: seeded(7),
+      url: "http://127.0.0.1:18085/", conference: "test-conf", minutes: 3, rps: 2, fetch: api.fetch, now: c.now, sleep: c.sleep, rand: seeded(7),
       log: (l) => out.push(l),
     });
     out.push(stats.summary());
@@ -188,7 +188,7 @@ describe("runTraffic", () => {
     const c = fakeClock();
     let n = 0;
     const fetch: FetchLike = async () => { n += 1; return json(429, { error: "rate_limited" }, { "retry-after": "10" }); };
-    const stats = await runTraffic({ url: "http://x", minutes: 1, rps: 5, fetch, now: c.now, sleep: c.sleep, rand: () => 0.5, log: () => {} });
+    const stats = await runTraffic({ url: "http://x", conference: "test-conf", minutes: 1, rps: 5, fetch, now: c.now, sleep: c.sleep, rand: () => 0.5, log: () => {} });
     // Without backoff this would be ~300 requests in a minute at 5 rps.
     expect(n).toBeLessThan(20);
     expect(stats.summary()).toMatch(/429=/);
@@ -198,7 +198,7 @@ describe("runTraffic", () => {
     const c = fakeClock();
     const out: string[] = [];
     const fetch: FetchLike = async (url) => { throw new Error(`connect ECONNREFUSED ${url} ${JWT}`); };
-    const stats = await runTraffic({ url: "http://x", minutes: 1, fetch, now: c.now, sleep: c.sleep, rand: seeded(3), log: (l) => out.push(l) });
+    const stats = await runTraffic({ url: "http://x", conference: "test-conf", minutes: 1, fetch, now: c.now, sleep: c.sleep, rand: seeded(3), log: (l) => out.push(l) });
     out.push(stats.summary());
     expect(out.join("\n")).not.toMatch(TOKEN_LIKE);
     expect(stats.summary()).toMatch(/error=/);
@@ -211,7 +211,7 @@ describe("cli", () => {
     const orig = globalThis.fetch;
     globalThis.fetch = (() => { throw new Error("network used in dry run"); }) as typeof fetch;
     try {
-      await main(["--url", "http://127.0.0.1:18085", "--minutes", "10", "--dry-run"], (l) => out.push(l));
+      await main(["--url", "http://127.0.0.1:18085", "--conference", "test-conf", "--minutes", "10", "--dry-run"], (l) => out.push(l));
     } finally {
       globalThis.fetch = orig;
     }
@@ -222,6 +222,10 @@ describe("cli", () => {
   });
 
   it("rejects a missing url", async () => {
-    await expect(main(["--minutes", "1", "--dry-run"], () => {})).rejects.toThrow(/--url/);
+    await expect(main(["--conference", "test-conf", "--minutes", "1", "--dry-run"], () => {})).rejects.toThrow(/--url/);
+  });
+
+  it("rejects a missing conference", async () => {
+    await expect(main(["--url", "http://127.0.0.1:18085", "--minutes", "1", "--dry-run"], () => {})).rejects.toThrow(/--conference/);
   });
 });

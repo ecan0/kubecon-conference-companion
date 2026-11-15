@@ -83,7 +83,7 @@ independent of any one ingress, DNS, TLS, or secrets implementation.
 
 ## Seed the catalog
 
-The API image includes `data/talks.json`. The Job embeds all 417 talks (about 20 seconds):
+The API image includes the talk files in `data/talks/` (one `<conference>.json` per event). The Job seeds every file and embeds all 417 KubeCon talks (about 20 seconds):
 
 ```sh
 kubectl -n "$NAMESPACE" apply -f deploy/k8s/app/seed-job.yaml

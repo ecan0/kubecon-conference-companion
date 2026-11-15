@@ -1,22 +1,28 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useLocation } from "react-router-dom";
 import type { SearchFacets, SearchMode, SearchResponse } from "@cc/shared";
 import { ApiError, api } from "../api.js";
 import { talkHref } from "../talksApi.js";
 import { SuggestInput } from "../components/SuggestInput.js";
-import { EmptyState, ErrorState } from "../components/PageState.js";
+import { EmptyState, ErrorState, NoConferenceState, UnpublishedTalksState, conferenceSlug, useConferenceEntry } from "../components/PageState.js";
 import { SearchFilters } from "../components/SearchFilters.js";
 import { readSearchState, toFilterParams, writeSearchState, type SearchPageState } from "../searchFilters.js";
 import "./discovery.css";
 
 type Result = SearchResponse & { debug?: unknown };
 const modes = ["keyword", "hybrid"] as const;
-/** Keeps the query and selected filters in the address bar so a search can be shared or reloaded. */
-function persistInUrl(state: SearchPageState) {
-  const qs = writeSearchState(state);
+/** Keeps the query, selected filters and conference in the address bar so a search can be shared or reloaded. */
+function persistInUrl(state: SearchPageState, conference: string | null) {
+  const params = new URLSearchParams(writeSearchState(state));
+  if (conference) params.set("c", conference);
+  const qs = params.toString();
   window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
 }
 
 export function Search() {
+  const { search } = useLocation();
+  const conference = conferenceSlug(search);
+  const conferenceEntry = useConferenceEntry(conference);
   const [initial] = useState(() => readSearchState(window.location.search));
   const [q, setQ] = useState(initial.q);
   const [filters, setFilters] = useState<SearchPageState>(initial);
@@ -30,32 +36,38 @@ export function Search() {
   const [pending, setPending] = useState(false);
   // Hybrid was overloaded (503) or failing in the database (502): keyword results are shown in its place.
   const [hybridFellBack, setHybridFellBack] = useState(false);
+  // Both methods returned nothing for an event with no programme: that is not a bad query.
+  const [unpublished, setUnpublished] = useState(false);
+  // Identifies the latest run so a slow availability check cannot overwrite a newer result.
+  const runSeq = useRef(0);
+  useEffect(() => { setUnpublished(false); }, [conference]);
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     await run(q.trim(), filters);
   }
   async function onFiltersChange(next: SearchPageState) {
     setFilters(next);
-    if (searchedQ === null) persistInUrl({ ...next, q: q.trim() });
+    if (searchedQ === null) persistInUrl({ ...next, q: q.trim() }, conference);
     else await run(searchedQ, next);
   }
   // A shared link with a query runs its search on load.
   const autoRan = useRef(false);
   useEffect(() => {
-    if (autoRan.current || initial.q.trim() === "") return;
+    if (autoRan.current || !conference || initial.q.trim() === "") return;
     autoRan.current = true;
     void run(initial.q.trim(), initial);
   }, []);
   async function run(query: string, selected: SearchPageState) {
-    if (pending) return;
-    persistInUrl({ ...selected, q: query });
+    if (pending || !conference) return;
+    const seq = ++runSeq.current;
+    persistInUrl({ ...selected, q: query }, conference);
     setSearchedQ(query);
     setPending(true);
     setResults({});
     setErrors({});
     setHybridFellBack(false);
     const params = toFilterParams(selected);
-    const responses = await Promise.allSettled(modes.map((mode) => api.search(query, mode, debug, params)));
+    const responses = await Promise.allSettled(modes.map((mode) => api.search(query, mode, debug, params, conference)));
     const next: Partial<Record<SearchMode, Result>> = {};
     const failures: Partial<Record<SearchMode, string>> = {};
     responses.forEach((response, index) => {
@@ -78,25 +90,39 @@ export function Search() {
     setResults(next);
     setErrors(failures);
     setPending(false);
+    // Nothing at all came back: ask whether this event has a programme before blaming the query.
+    if (!(Object.keys(next).length > 0 && Object.values(next).every((result) => result.hits.length === 0))) {
+      setUnpublished(false);
+    } else {
+      void api.catalogTopics(conference).then(
+        ({ topics }) => { if (runSeq.current === seq) setUnpublished(topics.length === 0); },
+        () => { if (runSeq.current === seq) setUnpublished(false); },
+      );
+    }
   }
+  if (!conference) return <section className="discovery">
+    <h1>Search talks</h1>
+    <NoConferenceState />
+  </section>;
   return <section className="discovery">
     <h1>Search talks</h1>
     <p>Compare exact keyword matches with hybrid search, which also looks for related meaning.</p>
     <form onSubmit={onSubmit} role="search" aria-busy={pending}>
       <label htmlFor="q">Query</label>
-      <SuggestInput id="q" value={q} onChange={setQ} maxLength={1000} placeholder="Securing my Kubernetes supply chain" />
+      <SuggestInput id="q" value={q} onChange={setQ} conference={conference} maxLength={1000} placeholder="Securing my Kubernetes supply chain" />
       <label><input type="checkbox" checked={debug} onChange={(event) => setDebug(event.target.checked)} /> Include query details</label>
       <button type="submit" disabled={pending}>{pending ? "Searching…" : "Search"}</button>
     </form>
     <SearchFilters facets={facets} state={filters} onChange={onFiltersChange} disabled={pending} />
     <p role="status">{pending ? "Searching both methods…" : Object.keys(results).length > 0 ? "Comparison ready." : "Enter a query to compare results."}</p>
+    {unpublished && <UnpublishedTalksState conference={conferenceEntry} />}
     <div className="search-comparison">{modes.map((mode) => <section key={mode} aria-labelledby={`heading-${mode}`}>
       <h2 id={`heading-${mode}`}>{mode === "keyword" ? "Keyword" : "Hybrid"}</h2>
       {errors[mode] && <ErrorState onRetry={() => void run(searchedQ ?? q.trim(), filters)} retryLabel={`Retry ${mode} search`}>{errors[mode]}</ErrorState>}
       {mode === "hybrid" && hybridFellBack && <p role="status">Hybrid search is warming up, so keyword results are shown here instead. Try again in a few seconds.</p>}
       {results[mode] && <>
         <p>{results[mode]!.hits.length} results · {results[mode]!.tookMs} ms</p>
-        {results[mode]!.hits.length === 0 && <EmptyState>
+        {results[mode]!.hits.length === 0 && !unpublished && <EmptyState>
           <p>No matching talks.</p>
           <p>Try broader or fewer words, for example “security” instead of a full sentence, check the spelling, or clear some filters.</p>
         </EmptyState>}

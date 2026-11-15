@@ -11,6 +11,7 @@ import {
 } from "@cc/shared";
 import { z } from "zod";
 import { requireAttendee, type TokenService } from "../auth/token.js";
+import { readConference } from "../http/conference.js";
 import { applyRateLimit, limitFor, resolveRateLimits, sendIfRateLimited, type RateLimitPolicy } from "../http/rateLimit.js";
 import { createCalendar } from "../calendar/ical.js";
 import { isDbUnavailable, type Db } from "../db/client.js";
@@ -175,7 +176,7 @@ function addRoutes(app: FastifyInstance, deps: SearchRouteDeps): void {
     return reply.code(500).send({ error: "internal_error" });
   });
 
-  app.get<{ Querystring: { q?: string; mode?: string; debug?: string; size?: string } & Record<string, unknown> }>(
+  app.get<{ Querystring: { q?: string; mode?: string; debug?: string; size?: string; conference?: string } & Record<string, unknown> }>(
     routes.search.path,
     limitFor(limits.search),
     async (req, reply): Promise<SearchResponse | void> => {
@@ -193,17 +194,21 @@ function addRoutes(app: FastifyInstance, deps: SearchRouteDeps): void {
       }
       const parsedFilters = parseSearchFilters(req.query);
       if ("error" in parsedFilters) return reply.code(400).send(bad(parsedFilters.error));
-      return observed(mode, () => searchTalks(db, embedder, q, mode, size, req.query.debug === "1", parsedFilters.filters));
+      const conference = readConference(req, reply);
+      if (conference === null) return reply;
+      return observed(mode, () => searchTalks(db, embedder, q, mode, size, conference, req.query.debug === "1", parsedFilters.filters));
     },
   );
 
-  app.post<{ Body: OnboardingRequest; Querystring: { debug?: string } }>(
+  app.post<{ Body: OnboardingRequest; Querystring: { debug?: string; conference?: string } }>(
     routes.onboarding.path,
     { ...limitFor(limits.onboarding), bodyLimit: BODY_LIMIT_BYTES },
     async (req, reply): Promise<OnboardingResponse | void> => {
       const parsed = parseAnswers(req.body?.answers);
       if ("error" in parsed) return reply.code(400).send(bad(parsed.error));
-      const run = () => onboardingSearch(db, embedder, parsed.answers, req.query.debug === "1");
+      const conference = readConference(req, reply);
+      if (conference === null) return reply;
+      const run = () => onboardingSearch(db, embedder, parsed.answers, conference, req.query.debug === "1");
       // An empty answer set returns without querying the database, so it says nothing about hybrid health.
       return onboardingText(parsed.answers) === "" ? run() : observed("hybrid", run);
     },
@@ -246,7 +251,10 @@ function addRoutes(app: FastifyInstance, deps: SearchRouteDeps): void {
       if (body.answers !== undefined) {
         const parsed = parseAnswers(body.answers);
         if ("error" in parsed) return reply.code(400).send(bad(parsed.error));
-        const res = await onboardingSearch(db, embedder, parsed.answers, false);
+        // Only this branch reads the talk catalogue; an explicit talkIds save is a by-id lookup.
+        const conference = readConference(req, reply);
+        if (conference === null) return reply;
+        const res = await onboardingSearch(db, embedder, parsed.answers, conference, false);
         const candidates: ScoredTalk[] = (res.hits ?? []).map((h) => ({ talk: h.talk, score: h.score, matched: h.matched }));
         return buildAndSaveSchedule(candidates, [], opts);
       }

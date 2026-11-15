@@ -25,8 +25,8 @@ struct Avatar: Equatable, Hashable, Sendable {
         Swatch(hex: "d9b45a", name: "Blond"), Swatch(hex: "a3361f", name: "Red"), Swatch(hex: "b9b9b9", name: "Grey")
     ]
     static let shirtOptions = [
-        Swatch(hex: "c6f19d", name: "Lime"), Swatch(hex: "3b82c4", name: "Blue"), Swatch(hex: "e5604d", name: "Coral"),
-        Swatch(hex: "f2c14e", name: "Yellow"), Swatch(hex: "2a9d8f", name: "Teal"), Swatch(hex: "f4f7ee", name: "White"),
+        Swatch(hex: "93eaff", name: "Turquoise"), Swatch(hex: "3b82c4", name: "Blue"), Swatch(hex: "e5604d", name: "Coral"),
+        Swatch(hex: "f2c14e", name: "Yellow"), Swatch(hex: "2a9d8f", name: "Teal"), Swatch(hex: "ffffff", name: "White"),
         Swatch(hex: "3a3f3a", name: "Graphite"), Swatch(hex: "e8833a", name: "Orange")
     ]
     static let pantsSwatches = [
@@ -40,7 +40,7 @@ struct Avatar: Equatable, Hashable, Sendable {
     static let shirts = shirtOptions.map(\.hex)
     static let pantsOptions = pantsSwatches.map(\.hex)
 
-    /// The website's `defaultAvatar()`: Fair, Brown, Lime, Navy, no cap.
+    /// The website's `defaultAvatar()`: Fair, Brown, Turquoise, Navy, no cap.
     static let standard = Avatar(skin: skins[1], hair: hairs[1], shirt: shirts[0], pants: pantsOptions[0], cap: false)
 
     /// Eyes, shoes and cap brim colour.

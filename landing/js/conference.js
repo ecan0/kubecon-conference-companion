@@ -1,8 +1,13 @@
-/* Conference page: fills the page from ?c=<slug>, points the QR and the register links at it, and shows a
+/* Conference page: fills the page from ?c=<slug>, points the QR and the register/app links at it, and shows a
    not-found state for a slug that is not in the catalogue. Plain ES module; js/qr.js draws the QR on its own and
-   reads ?c= itself, so this file only keeps the canvas's fallback slug and every register link in step.
-   Without script, or while it loads, the static HTML is the default event (the one real one). */
-import { loadConferences, getConference, DEFAULT_SLUG, VENUE_TBA } from './conferences.js';
+   reads ?c= itself, so this file only keeps the canvas's slug and every link in step.
+   With no ?c= the page offers the conference list: no event is assumed. */
+import { loadConferences, getConference, withConference, setConferenceQuery, VENUE_TBA } from './conferences.js';
+import { applyAppLinks, getConferenceTopics } from './companion-api.js';
+
+const CHOOSER_TEXT = 'Choose a conference first.';
+const CONFERENCES_HREF = '/site/#conferences';
+const TALK_TOPIC_LIMIT = 12;
 
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -24,19 +29,52 @@ function formatDatesRaw(c) {
     : `${wd}${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]} – ${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]} ${b.getUTCFullYear()}`;
 }
 
-const slug = new URLSearchParams(location.search).get('c') || DEFAULT_SLUG;
+const slug = new URLSearchParams(location.search).get('c') || '';
 
 /* before anything is awaited, so js/qr.js (which awaits the config first) and the links agree with the address */
-$$('canvas[data-qr="self"]').forEach((cv) => cv.setAttribute('data-qr-conference', slug));
+if (slug) {
+  $$('canvas[data-qr="self"]').forEach((cv) => cv.setAttribute('data-qr-conference', slug));
+  pointLinks(slug);
+}
 function pointLinks(s) {
-  $$('a[data-c-link]').forEach((a) => {
-    const via = a.getAttribute('data-via');
-    a.href = `${a.getAttribute('data-c-link')}?c=${encodeURIComponent(s)}${via ? `&via=${encodeURIComponent(via)}` : ''}`;
+  $$('a[data-c-link]').forEach((a) => setConferenceQuery(a, s, a.getAttribute('data-via') || ''));
+  /* the app pages take the conference in the query; the attribute is what js/companion-api.js rebuilds the href from */
+  $$('a[data-app-link]').forEach((a) => {
+    const path = a.getAttribute('data-app-link');
+    if (!path) return;
+    a.setAttribute('data-app-link', withConference(path, s));
+    setConferenceQuery(a, s);
   });
 }
-pointLinks(slug);
 
 function setMeta(sel, attr, value) { const el = document.querySelector(sel); if (el && value) el.setAttribute(attr, value); }
+
+function chooserLink() {
+  const a = document.createElement('a');
+  a.href = CONFERENCES_HREF;
+  a.textContent = 'Open the conference list';
+  return a;
+}
+
+/** No ?c=: no event is assumed, so the page offers the conference list instead of one event's details. */
+function showChooser() {
+  const root = document.documentElement;
+  root.setAttribute('data-conference-missing', '');
+  const h1 = document.querySelector('#hero-h');
+  if (h1) h1.textContent = 'Choose a conference';
+  const lead = document.querySelector('.cc-hero .hero__lead');
+  if (lead) {
+    const p = document.createElement('p');
+    p.append(CHOOSER_TEXT + ' ', chooserLink(), '.');
+    lead.replaceChildren(p);
+  }
+  $$('[data-found]').forEach((el) => { el.hidden = true; });
+  const event = document.querySelector('#event');
+  if (event) event.hidden = true;
+  const note = document.querySelector('[data-missing]');
+  if (note) note.hidden = true;
+  document.title = 'Choose a conference: Conference Companion';
+}
 
 function showMissing() {
   const root = document.documentElement;
@@ -78,13 +116,63 @@ function fill(c) {
   setMeta('meta[property="og:description"]', 'content', `${when}. Register from your phone.`);
 }
 
+/**
+ * The talks panel. GET /api/catalog/topics?conference=<slug> is the only public read that says whether an event
+ * has published talks (it lists the tags of those talks), so an empty answer is the "not published yet" state.
+ * A route that cannot answer (no ?c=, the preview server, the API down) leaves the panel hidden: no guess.
+ */
+async function fillTalks(c) {
+  const section = document.querySelector('[data-talk-section]');
+  const body = section ? section.querySelector('[data-talks-body]') : null;
+  if (!body) return;
+  const found = await getConferenceTopics(c.slug);
+  if (!found) return;
+  const nodes = [];
+  if (found.topics.length) {
+    const lead = document.createElement('p');
+    lead.className = 't-lead';
+    lead.textContent = `The talks published for ${c.name} cover these topics.`;
+    const list = document.createElement('ul');
+    list.className = 'cc-chips';
+    for (const topic of found.topics.slice(0, TALK_TOPIC_LIMIT)) {
+      const li = document.createElement('li');
+      li.textContent = topic;
+      list.append(li);
+    }
+    const row = document.createElement('p');
+    const search = document.createElement('a');
+    search.className = 'btn btn--primary';
+    search.setAttribute('data-app-link', withConference('/search', c.slug));
+    search.textContent = 'Search the talks';
+    row.append(search);
+    nodes.push(lead, list, row);
+  } else {
+    const notice = document.createElement('p');
+    notice.setAttribute('role', 'status');
+    notice.append(`Talks for ${c.name} have not been published yet.`);
+    if (c.url) {
+      const site = document.createElement('a');
+      site.href = c.url;
+      site.rel = 'noopener';
+      site.textContent = 'Open the official event site';
+      notice.append(' ', site, '.');
+    }
+    nodes.push(notice);
+  }
+  body.replaceChildren(...nodes);
+  section.hidden = false;
+  applyAppLinks(section).catch(() => {});
+}
+
 async function init() {
+  if (!slug) { showChooser(); return; }
   let c = null;
   try { await loadConferences(); } catch (e) { /* the inlined catalogue answers */ }
   try { c = getConference(slug); } catch (e) { c = null; }
-  if (!c) { if (slug !== DEFAULT_SLUG) showMissing(); return; }
+  if (!c) { showMissing(); return; }
   fill(c);
   pointLinks(c.slug);
+  await fillTalks(c);
 }
 init();
 

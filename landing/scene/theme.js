@@ -65,7 +65,7 @@ export function readTheme(host) {
   const t = { bg, floor, wall, ink, accent, dark, cream, white };
   t.deny = hex(DENY_HEX);
   t.grey = hex(GREY_HEX);
-  // the small groups that fold into "other": pale lime-yellow, light pink (none of the five hues, no violet)
+  // the small groups that fold into "other": pale yellow, light pink (none of the five hues, no violet)
   t.fold = ['#efe56a', '#ffa3b4'].map(hex);
   t.cluster = CLUSTER_HEX.map(hex);
   t.k = {

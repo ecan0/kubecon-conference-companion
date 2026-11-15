@@ -95,7 +95,7 @@ export function createEngine({ host, canvas, gl, count = 80, seed = SEED, data =
 
   let guideShown = false;
   let guideArgs = null;
-  // dotted lime route on the floor (what is left of it) and stepped expanding rings around the three Bluetooth receivers
+  // dotted turquoise route on the floor (what is left of it) and stepped expanding rings around the three Bluetooth receivers
   function updateGuide() {
     const route = crowd.guideRoute();
     if (!route && !guideShown) return;

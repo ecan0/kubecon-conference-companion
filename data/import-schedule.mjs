@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-// Regenerates data/talks.json from the official KubeCon + CloudNativeCon North
-// America schedule page (the Linux Foundation event site, server-rendered).
+// Regenerates data/talks/<conference>.json from an official event schedule page
+// (the Linux Foundation event site, server-rendered).
 //
-//   node data/import-schedule.mjs [--url <schedule url>] [--out data/talks.json] [--tz-offset -07:00]
+//   node data/import-schedule.mjs --conference <slug> [--url <schedule url>] [--out data/talks/<slug>.json] [--tz-offset -07:00]
 //
+// The conference slug is the catalogue entry in landing/data/conferences.json and
+// names the output file, so the seed never needs a conference field per entry.
 // Only public session fields are kept: title, abstract, speaker names, room,
 // times, track and level. No speaker contact data, bios or links are stored.
-// Times on the page are venue-local (Salt Lake City, MST in November); they
-// are converted to UTC using --tz-offset.
-import { writeFile } from "node:fs/promises";
+// Times on the page are venue-local; they are converted to UTC using --tz-offset.
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
@@ -16,8 +18,15 @@ const opt = (name, dflt) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : dflt;
 };
+const CONF = opt("--conference");
+const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
+if (!CONF) throw new Error("--conference <slug> is required (e.g. kubecon-na-2026)");
+if (!SLUG.test(CONF)) throw new Error(`--conference must match ${SLUG}, got "${CONF}"`);
+/** KubeCon session ids keep their historical `kcna26-` prefix; other events use their own slug. */
+const ID_PREFIX = CONF.startsWith("kubecon") ? "kcna26" : CONF;
 const URL_ = opt("--url", "https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/program/schedule/");
-const OUT = opt("--out", fileURLToPath(new URL("./talks.json", import.meta.url)));
+const TALKS_DIR = fileURLToPath(new URL("./talks/", import.meta.url));
+const OUT = opt("--out", join(TALKS_DIR, `${CONF}.json`));
 const TZ = opt("--tz-offset", "-07:00");
 
 const unescapeHtml = (s) =>
@@ -146,7 +155,7 @@ function parse(html) {
     for (const [tag, re] of Object.entries(KEYWORDS)) if (re.test(haystack)) tags.add(tag);
 
     talks.push({
-      id: `kcna26-${sid}`,
+      id: `${ID_PREFIX}-${sid}`,
       title,
       speaker: speakers.join(", "),
       abstract: desc.replace(/\S+@\S+\.\S+/g, "[email removed]"),
@@ -165,6 +174,7 @@ function parse(html) {
 const res = await fetch(URL_, { headers: { "user-agent": "conference-companion-importer/1.0" } });
 if (!res.ok) throw new Error(`GET ${URL_} -> ${res.status}`);
 const { talks, skipped, sessionBlocks } = parse(await res.text());
+await mkdir(dirname(OUT), { recursive: true });
 await writeFile(OUT, JSON.stringify(talks, null, 2) + "\n");
 console.log(`parsed ${sessionBlocks} session blocks, kept ${talks.length}; skipped:`, skipped);
-console.log(`wrote ${OUT}`);
+console.log(`wrote ${OUT} (conference ${CONF})`);

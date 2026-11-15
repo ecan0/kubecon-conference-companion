@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { OTHER_TOPIC, type InterestAggregateResponse, type InterestClustersResponse, type RoomPlacementResponse } from "@cc/shared";
-import { api, ApiError } from "../api.js";
+import { api, ApiError, conferenceFromLocation } from "../api.js";
 import { EmptyState, ErrorState, LoadingState } from "../components/PageState.js";
 import { ROOM_STEP, roomSize } from "./InterestMap.js";
 import "./discovery.css";
@@ -16,6 +16,8 @@ const topicLabel = (topic: string) => (topic === OTHER_TOPIC ? "Other (smaller g
  * The organizer key lives in component state only and is never stored.
  */
 export function Organizer() {
+  // Placement ranks a single event's talks; without `?c=` there is no event to rank.
+  const conference = conferenceFromLocation();
   const [aggregate, setAggregate] = useState<InterestAggregateResponse | null>(null);
   const [aggregateError, setAggregateError] = useState("");
   const [key, setKey] = useState("");
@@ -23,7 +25,7 @@ export function Organizer() {
   const [clusterError, setClusterError] = useState("");
   const [placement, setPlacement] = useState<RoomPlacementResponse | null>(null);
   const [placementError, setPlacementError] = useState("");
-  const [placementLoading, setPlacementLoading] = useState(true);
+  const [placementLoading, setPlacementLoading] = useState(conference !== null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -51,10 +53,11 @@ export function Organizer() {
   }
 
   async function loadPlacement(organizerKey: string) {
+    if (!conference) return;
     setPlacementLoading(true);
     setPlacementError("");
     try {
-      setPlacement(await api.roomPlacement(organizerKey));
+      setPlacement(await api.roomPlacement(organizerKey, conference));
     } catch (err) {
       setPlacement(null);
       setPlacementError(err instanceof ApiError && err.status === 401 ? "An organizer key is required." : "Could not load room placement. Please try again.");
@@ -166,6 +169,7 @@ export function Organizer() {
 
       <section aria-labelledby="org-placement">
         <h2 id="org-placement">Room placement</h2>
+        {!conference && <p role="status">Choose a conference first. <a href="/site/#conferences">Open the conference list</a></p>}
         {placementLoading && <LoadingState>Loading room placement…</LoadingState>}
         {placementError && <ErrorState onRetry={() => void loadPlacement(key.trim())}>{placementError}</ErrorState>}
         {placement && placement.slots.length === 0 && <EmptyState><p>No talks with a readable time were found.</p></EmptyState>}

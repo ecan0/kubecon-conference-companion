@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const TALKS_PATH = join(HERE, '..', '..', 'data', 'talks.json');
+const TALKS_PATH = join(HERE, '..', '..', 'data', 'talks', 'kubecon-na-2026.json');
 const CONFERENCES_PATH = join(HERE, 'conferences.json');
 const ATTENDEES_OUT = join(HERE, 'demo-attendees.json');
 const AGGREGATES_OUT = join(HERE, 'demo-aggregates.json');

@@ -22,9 +22,23 @@ function PixelPerson({ avatar, x, y, cell, className }: { avatar: Avatar; x: num
 const TICK_MS = 800;
 const dbm = (value: number) => `${String(value).replace("-", "−")} dBm`;
 
+/** Find my room needs the conference from `?c=`: without one there is no venue to place the visitor in. */
+export function Navigate() {
+  const [params] = useSearchParams();
+  if (!params.get("c")) {
+    return (
+      <section className="nav-page" aria-labelledby="nav-title">
+        <h1 id="nav-title">Find my room</h1>
+        <p>Choose a conference first. <a href="/site/#conferences">Open the conference list</a></p>
+      </section>
+    );
+  }
+  return <NavigateView />;
+}
+
 /** Find my room: a position estimated from Bluetooth receiver signal strengths, and a walking route to a chosen room.
  *  Everything stays in this component: no network calls, no telemetry attributes, nothing about position is stored or sent. */
-export function Navigate() {
+function NavigateView() {
   const [params, setParams] = useSearchParams();
   const dest = resolveRoom(params.get("to")) ?? "main-stage";
   const me = useMemo(() => loadAvatar(), []);
@@ -88,6 +102,7 @@ export function Navigate() {
   return (
     <section className="nav-page" aria-labelledby="nav-title">
       <h1 id="nav-title">Find my room</h1>
+      <p className="nav-demo-note" role="note"><strong>Demo and simulation.</strong> Room positions come from simulated Bluetooth signals. Accuracy depends on the talk venue's floor plan and receiver layout. This is not a finished product.</p>
       <p>Pick a room to see a walking route from where the venue's Bluetooth receivers place you.</p>
 
       <div className="nav-layout">
@@ -130,7 +145,7 @@ export function Navigate() {
         <div className="nav-side">
           <div className="nav-card">
             <label htmlFor="nav-to">Where to?</label>
-            <select id="nav-to" value={dest} onChange={(event) => setParams({ to: event.target.value }, { replace: true })}>
+            <select id="nav-to" value={dest} onChange={(event) => setParams((prev) => { const next = new URLSearchParams(prev); next.set("to", event.target.value); return next; }, { replace: true })}>
               {FLOOR.rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
             <p className="nav-here"><strong>You are in: {here?.name ?? "finding you…"}</strong></p>

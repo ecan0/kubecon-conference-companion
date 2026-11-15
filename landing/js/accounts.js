@@ -3,7 +3,7 @@
 // Provider avatar images are never loaded: initials only. Pure helpers first, DOM glue for the header button at the end.
 
 import { authUrl } from "./auth.js";
-import { sessionToken } from "./companion-api.js";
+import { sessionToken, signOut } from "./companion-api.js";
 
 export const LINKED_KEY = "cc.linked.v1";
 export const PROVIDERS = [
@@ -65,19 +65,32 @@ export async function fetchProviders(fetchImpl = globalThis.fetch) {
   } catch { return {}; }
 }
 
-// ------------------------------------------------------------------ header: "Sign in with GitHub" (a[data-signin]), shown when the
-// provider is enabled and no session exists. A returning account goes back to the return path; a new account gets a claim and the
-// app's callback sends it on to register.html?via=<provider>. On conference.html the return is that conference's registration.
-const buttons = typeof document !== "undefined" ? document.querySelectorAll("a[data-signin]") : [];
-if (buttons.length && !sessionToken()) {
+// ------------------------------------------------------------------ header: "Sign in with GitHub" (a[data-signin]) and "Sign out"
+// (button[data-signout]). The link shows when the provider is enabled and no session exists, and reads "Sign in again"
+// when a linked profile is still in this browser. A returning account goes back to the return path; a new account gets
+// a claim and the app's callback sends it on to register.html?via=<provider>. On conference.html the return is that
+// conference's registration, and without a conference the visitor is sent back to the page they are on.
+const signInLinks = typeof document !== "undefined" ? document.querySelectorAll("a[data-signin]") : [];
+const signOutButtons = typeof document !== "undefined" ? document.querySelectorAll("button[data-signout]") : [];
+const signedIn = sessionToken() !== null;
+const linkedAccounts = readLinked();
+
+if (signOutButtons.length && signedIn) {
+  for (const a of signInLinks) a.hidden = true;
+  for (const b of signOutButtons) {
+    b.hidden = false;
+    b.addEventListener("click", () => { signOut(); location.reload(); });
+  }
+} else if (signInLinks.length) {
   fetchProviders().then((enabled) => {
-    const slug = new URLSearchParams(location.search).get("c") || "cloud-native-hackathon-slc-2026";
+    const slug = new URLSearchParams(location.search).get("c");
     const onConference = document.querySelector("[data-c-link]") !== null;
-    for (const a of buttons) {
+    for (const a of signInLinks) {
       const id = a.dataset.signin;
       if (!enabled[id]) continue;
-      const returnPath = a.dataset.return || (onConference ? registerReturnPath(slug, id) : location.pathname + location.search);
+      const returnPath = a.dataset.return || (onConference && slug ? registerReturnPath(slug, id) : location.pathname + location.search);
       a.href = startUrl(id, returnPath);
+      if (linkedAccounts[id]) a.textContent = "Sign in again";
       a.hidden = false;
     }
   });

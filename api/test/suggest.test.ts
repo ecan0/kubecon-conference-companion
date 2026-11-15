@@ -4,7 +4,7 @@ import type { SuggestResponse } from "@cc/shared";
 import { suggestRoutes, SUGGEST_CACHE_MS } from "../src/routes/suggest.js";
 import { MAX_SUGGESTIONS } from "../src/suggest/suggest.js";
 import { setSpanRunner } from "../src/telemetry/span.js";
-import { failingDb, mk, recordingDb, seededDb } from "./search-fixtures.js";
+import { CONFERENCE, failingDb, mk, recordingDb, seededDb } from "./search-fixtures.js";
 
 const spans: { name: string; attrs: Record<string, unknown>; set: Record<string, unknown> }[] = [];
 setSpanRunner(async (name, attrs, fn) => {
@@ -25,7 +25,7 @@ async function setup(talks = CATALOG, rateLimitPerMinute = 5) {
   const db = recordingDb(await seededDb(talks));
   const app = Fastify();
   app.register(suggestRoutes, { db, now: () => state.clock, rateLimitPerMinute });
-  const get = (q: string) => app.inject({ method: "GET", url: `/api/suggest?q=${encodeURIComponent(q)}` });
+  const get = (q: string) => app.inject({ method: "GET", url: `/api/suggest?q=${encodeURIComponent(q)}&conference=${CONFERENCE}` });
   return { db, state, get, app };
 }
 const texts = (r: { json(): unknown }) => (r.json() as SuggestResponse).suggestions.map((s) => `${s.kind}:${s.text}`);
@@ -66,8 +66,15 @@ describe("GET /api/suggest", () => {
   });
   it("rejects a repeated q parameter", async () => {
     const { db, app } = await setup();
-    const res = await app.inject({ method: "GET", url: "/api/suggest?q=ab&q=cd" });
+    const res = await app.inject({ method: "GET", url: `/api/suggest?q=ab&q=cd&conference=${CONFERENCE}` });
     expect(res.statusCode).toBe(400);
+    expect(db.statements).toHaveLength(0);
+  });
+  it("requires the conference parameter", async () => {
+    const { db, app } = await setup();
+    const res = await app.inject({ method: "GET", url: "/api/suggest?q=kube" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "conference_required" });
     expect(db.statements).toHaveLength(0);
   });
   it("is cached for 30 s, case- and space-insensitively, with a public cache header", async () => {
@@ -90,7 +97,7 @@ describe("GET /api/suggest", () => {
     const run = async (err: { code: string; message: string }) => {
       const app = Fastify();
       app.register(suggestRoutes, { db: failingDb(err) });
-      return app.inject({ method: "GET", url: "/api/suggest?q=kube" });
+      return app.inject({ method: "GET", url: `/api/suggest?q=kube&conference=${CONFERENCE}` });
     };
     const down = await run({ code: "ECONNREFUSED", message: "secret kube" });
     expect(down.statusCode).toBe(503);

@@ -9,7 +9,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 const renderAt = (path: string) => render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
 
 it("renders the plan, a labelled simulated source, receiver readings and a route", () => {
-  renderAt("/navigate");
+  renderAt("/navigate?c=kubecon-na-2026");
   expect(screen.getByRole("heading", { level: 1, name: "Find my room" })).toBeTruthy();
   expect(screen.getByText("Simulated signals")).toBeTruthy();
   expect(screen.getByText(/You are in: Lobby and registration/)).toBeTruthy();
@@ -22,25 +22,25 @@ it("renders the plan, a labelled simulated source, receiver readings and a route
 });
 
 it("preselects the destination from ?to= and falls back for an unknown id", () => {
-  renderAt("/navigate?to=room-b");
+  renderAt("/navigate?c=kubecon-na-2026&to=room-b");
   expect((screen.getByLabelText("Where to?") as HTMLSelectElement).value).toBe("room-b");
   cleanup();
-  renderAt("/navigate?to=nowhere");
+  renderAt("/navigate?c=kubecon-na-2026&to=nowhere");
   expect((screen.getByLabelText("Where to?") as HTMLSelectElement).value).toBe("main-stage");
 });
 
 it("accepts the site's destination aliases in ?to=", () => {
-  renderAt("/navigate?to=scan");
+  renderAt("/navigate?c=kubecon-na-2026&to=scan");
   expect((screen.getByLabelText("Where to?") as HTMLSelectElement).value).toBe("room-b");
   cleanup();
-  renderAt("/navigate?to=keynote");
+  renderAt("/navigate?c=kubecon-na-2026&to=keynote");
   expect((screen.getByLabelText("Where to?") as HTMLSelectElement).value).toBe("main-stage");
 });
 
 it("draws you and the simulated attendees as decorative pixel people, with a text line", () => {
   const saved = JSON.stringify({ skin: "d9a066", hair: "2b1b12", shirt: "ff7a59", pants: "24324a", hat: true });
   vi.stubGlobal("localStorage", { getItem: (key: string) => (key === "cc.avatar.v1" ? saved : null) });
-  renderAt("/navigate");
+  renderAt("/navigate?c=kubecon-na-2026");
   expect(screen.getByText("16 other attendees shown (simulated)")).toBeTruthy();
   const svg = screen.getByRole("img", { name: /Floor plan/ });
   expect(svg.querySelectorAll(".nav-other").length).toBe(16);
@@ -54,7 +54,7 @@ it("draws you and the simulated attendees as decorative pixel people, with a tex
 it("walks on Start, announces room changes and arrival, and resets", () => {
   const fetchSpy = vi.fn();
   vi.stubGlobal("fetch", fetchSpy);
-  renderAt("/navigate?to=lounge");
+  renderAt("/navigate?c=kubecon-na-2026&to=lounge");
   const status = () => screen.getAllByRole("status").map((s) => s.textContent).join("|");
   fireEvent.click(screen.getByRole("button", { name: "Start" }));
   let seen = "";
@@ -71,7 +71,7 @@ it("walks on Start, announces room changes and arrival, and resets", () => {
 });
 
 it("changes the destination and announces it", () => {
-  renderAt("/navigate");
+  renderAt("/navigate?c=kubecon-na-2026");
   fireEvent.change(screen.getByLabelText("Where to?"), { target: { value: "room-a" } });
   expect(screen.getAllByRole("status").map((s) => s.textContent).join("|")).toContain("Destination: Breakout room A.");
   expect(screen.getByRole("list", { name: /Steps to Breakout room A/ })).toBeTruthy();

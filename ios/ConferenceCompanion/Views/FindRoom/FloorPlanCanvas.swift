@@ -9,7 +9,7 @@ struct FloorPlanCanvas: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
-    /// Receivers share the neutral tone; lime stays the only accent.
+    /// Receivers share the neutral tone; turquoise stays the only accent.
     private static let receiverTone = Theme.muted
     private static let doorsTop: [CGFloat] = [7, 19.5, 30.5]
     private static let doorsBottom: [CGFloat] = [7, 25]
@@ -97,7 +97,7 @@ struct FloorPlanCanvas: View {
             context.fill(Path(CGRect(x: snap(c.x - gap), y: snap(c.y) - hairline, width: snap(gap * 2), height: hairline * 3)), with: .color(color))
         }
 
-        // Destination: lime outline over its walls.
+        // Destination: turquoise outline over its walls.
         if let room = FloorPlan.room(id: snapshot.destinationID) {
             let r = rect(room.rect).insetBy(dx: 1, dy: 1)
             context.fill(Path(r), with: .color(Theme.accent.opacity(0.08)))
@@ -134,7 +134,7 @@ struct FloorPlanCanvas: View {
             context.fill(Path(square), with: .color(Self.receiverTone.opacity(active ? 1 : 0.7)))
         }
 
-        // Route: dashed lime, marching toward the destination.
+        // Route: dashed turquoise, marching toward the destination.
         if let route = snapshot.route, let fix = snapshot.fix, !route.isFinished {
             var path = Path()
             let remaining = route.remainingPoints(from: fix.point).map(point)

@@ -40,15 +40,18 @@ function postCallbackOnce(provider: string, code: string, state: string): Promis
 
 /**
  * Where a new account (a registration claim, no session) goes after sign-in: registration, wherever the
- * sign-in started. A return path already on the register page keeps its query (the conference) and gains `via`.
+ * sign-in started. A return path already on the register page keeps its query; any other return path
+ * still contributes its `c` conference. `via` names the provider.
  */
 function claimTarget(provider: string, ret: string): string {
-  if (ret.startsWith("/site/register.html")) {
-    const url = new URL(ret, "http://x.invalid");
-    url.searchParams.set("via", provider);
-    return url.pathname + url.search;
+  const onRegister = ret.startsWith("/site/register.html");
+  const url = onRegister ? new URL(ret, "http://x.invalid") : new URL("/site/register.html", "http://x.invalid");
+  if (!onRegister) {
+    const conference = new URL(ret, "http://x.invalid").searchParams.get("c");
+    if (conference) url.searchParams.set("c", conference);
   }
-  return `/site/register.html?via=${encodeURIComponent(provider)}`;
+  url.searchParams.set("via", provider);
+  return url.pathname + url.search;
 }
 
 /**

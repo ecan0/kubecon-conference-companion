@@ -28,7 +28,7 @@ describe("api stub", () => {
   });
 
   it("returns contract-shaped search results", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/search?q=elasticsearch&mode=keyword" });
+    const res = await app.inject({ method: "GET", url: "/api/search?q=elasticsearch&mode=keyword&conference=test-conf" });
     expect(res.statusCode).toBe(200);
     const body = res.json() as SearchResponse;
     expect(body.mode).toBe("keyword");

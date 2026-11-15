@@ -142,7 +142,7 @@ test("avatar: default, sanitize (palette values only, per part), param round tri
   const d = defaultAvatar();
   assert.match(avatarParam(d), /^[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}-h0$/);
   assert.equal(PALETTE.skin.length, 5); assert.equal(PALETTE.hair.length, 6); assert.equal(PALETTE.shirt.length, 8); assert.equal(PALETTE.pants.length, 4);
-  assert.ok(PALETTE.shirt.some((p) => p.hex === "c6f19d"));
+  assert.ok(PALETTE.shirt.some((p) => p.hex === "93eaff"));
   assert.deepEqual(sanitizeAvatar(null), d);
   assert.deepEqual(sanitizeAvatar("x"), d);
   const s = sanitizeAvatar({ skin: "#C68642", hair: "ff00ff", shirt: "3b82c4", pants: 5, hat: "yes" });

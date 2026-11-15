@@ -4,7 +4,7 @@
 // Message text (the visitor's and the model's) only ever goes through textContent.
 
 import { drawQr } from "./qr.js";
-import { DEFAULT_SLUG, getConference, loadConferences } from "./conferences.js";
+import { getConference, loadConferences } from "./conferences.js";
 import { completeSignup, fetchAccessToken, onReady, sendChat, sessionToken } from "./companion-api.js";
 import { LIMITS, VIA_VALUES, createSelection, parseConfirmChoice, scriptedTurn, validateKnown, validateProfile } from "./chat-script.js";
 
@@ -67,6 +67,30 @@ function formatExpiry(iso) {
   }
 }
 
+/** No conference in the address: ask for one instead of starting a conversation for an assumed event. */
+function showChooser(section) {
+  const log = section.querySelector("[data-chat-log]");
+  if (log) {
+    const boot = log.querySelector("[data-boot]");
+    if (boot) boot.remove();
+    const li = document.createElement("li");
+    li.className = "chat-msg";
+    li.dataset.role = "assistant";
+    const p = document.createElement("p");
+    p.append("Choose a conference first. ");
+    const a = document.createElement("a");
+    a.href = "/site/#conferences";
+    a.textContent = "Open the conference list";
+    p.append(a, ".");
+    li.append(p);
+    log.append(li);
+  }
+  const form = section.querySelector("[data-chat-form]");
+  if (form) form.hidden = true;
+  section.dataset.mode = "none";
+  section.dataset.state = "done";
+}
+
 export async function bindChat(section) {
   if (section.dataset.chatBound) return;
   section.dataset.chatBound = "true";
@@ -79,7 +103,8 @@ export async function bindChat(section) {
   if (!log || !form || !input) return;
 
   const params = new URLSearchParams(location.search);
-  const slug = params.get("c") || section.dataset.conference || DEFAULT_SLUG;
+  const slug = params.get("c") || section.dataset.conference || "";
+  if (!slug) { showChooser(section); return; }
   const viaParam = params.get("via");
   const storeKey = STORE_PREFIX + slug;
   const via = VIA_VALUES.includes(viaParam) ? viaParam : null;

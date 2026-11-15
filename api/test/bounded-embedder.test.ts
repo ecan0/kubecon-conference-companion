@@ -65,7 +65,7 @@ describe("GET /api/search when the embedder is busy", () => {
     const embedder: Embedder = { provider: "stub", dims: 384, embed: async () => { throw new EmbedderBusyError(); } };
     const app = buildServer(loadConfig({ NODE_ENV: "test" } as NodeJS.ProcessEnv), { db, embedder, runClaude: null });
     closers.push(app, db);
-    const res = await app.inject({ method: "GET", url: "/api/search?q=kubernetes&mode=hybrid" });
+    const res = await app.inject({ method: "GET", url: "/api/search?q=kubernetes&mode=hybrid&conference=test-conf" });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toEqual({ error: "search_overloaded" });
     expect(res.headers["retry-after"]).toBe("5");

@@ -14,8 +14,8 @@ export const PALETTE = {
     { hex: "d9b45a", name: "Blond" }, { hex: "a3361f", name: "Red" }, { hex: "b9b9b9", name: "Grey" },
   ],
   shirt: [
-    { hex: "c6f19d", name: "Lime" }, { hex: "3b82c4", name: "Blue" }, { hex: "e5604d", name: "Coral" }, { hex: "f2c14e", name: "Yellow" },
-    { hex: "2a9d8f", name: "Teal" }, { hex: "f4f7ee", name: "White" }, { hex: "3a3f3a", name: "Graphite" }, { hex: "e8833a", name: "Orange" },
+    { hex: "93eaff", name: "Turquoise" }, { hex: "3b82c4", name: "Blue" }, { hex: "e5604d", name: "Coral" }, { hex: "f2c14e", name: "Yellow" },
+    { hex: "2a9d8f", name: "Teal" }, { hex: "ffffff", name: "White" }, { hex: "3a3f3a", name: "Graphite" }, { hex: "e8833a", name: "Orange" },
   ],
   pants: [
     { hex: "2f3b52", name: "Navy" }, { hex: "3d3d3d", name: "Charcoal" }, { hex: "6b5a3e", name: "Khaki" }, { hex: "4a6a4a", name: "Olive" },

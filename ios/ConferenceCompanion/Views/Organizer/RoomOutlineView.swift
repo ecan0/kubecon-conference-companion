@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 2D outline of a scanned room drawn with Canvas. Walls are lime, doors and receiver squares muted grey-green.
+/// 2D outline of a scanned room drawn with Canvas. Walls are turquoise, doors and receiver squares muted grey-green.
 struct RoomOutlineView: View {
     let room: ScannedRoom
     var showReceivers = true

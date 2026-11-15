@@ -7,7 +7,7 @@
 .attendee-form [role=alert] { margin-top: var(--s-4); }
 .attendee-form #email-help, .attendee-form [id$="-help"] { color: var(--muted); font-size: var(--t-small); margin-top: var(--s-2); }
 
-/* Topic chips: 1px line at rest; lime fill, dark ink and a check mark when chosen (same as the sign-up chat) */
+/* Topic chips: 1px line at rest; turquoise fill, dark ink and a check mark when chosen (same as the sign-up chat) */
 .topic-choices { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
 .attendee-form .topic-choices label:has(input[type=checkbox]), .topic-choices label:has(input[type=checkbox]) {
   display: inline-flex; align-items: center; gap: var(--s-2); min-height: 44px; min-width: 44px; margin: 0; padding: 0 var(--s-4);

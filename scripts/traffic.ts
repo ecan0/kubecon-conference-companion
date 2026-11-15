@@ -1,7 +1,7 @@
 /**
  * Gentle synthetic traffic for the Dash0 dashboard and SLOs (#14, #48).
  *
- *   npx tsx scripts/traffic.ts --url http://127.0.0.1:18085 --minutes 10 [--rps 2] [--dry-run]
+ *   npx tsx scripts/traffic.ts --url http://127.0.0.1:18085 --conference kubecon-na-2026 --minutes 10 [--rps 2] [--dry-run]
  *
  * Mix (weighted): catalog browse, keyword + hybrid searches (the #36 eval
  * questions from scripts/search-eval.ts), /api/status polls, a few
@@ -212,6 +212,8 @@ export type FetchLike = (url: string, init?: { method?: string; headers?: Record
 
 export interface RunOptions {
   url: string;
+  /** Catalogue conference slug every scoped request carries (the API has no default event). */
+  conference: string;
   minutes: number;
   rps?: number;
   fetch?: FetchLike;
@@ -335,10 +337,10 @@ export async function runTraffic(opts: RunOptions): Promise<Stats> {
   });
 
   const search = (mode: "keyword" | "hybrid", q: string, route = `GET /api/search ${mode}`) =>
-    call(route, "GET", `/api/search?q=${encodeURIComponent(q)}&mode=${mode}&size=10`);
+    call(route, "GET", `/api/search?q=${encodeURIComponent(q)}&mode=${mode}&size=10&conference=${encodeURIComponent(opts.conference)}`);
 
   async function browseCatalog(): Promise<void> {
-    const r = await call("GET catalog (keyword)", "GET", `/api/search?q=${encodeURIComponent(pick(CATALOG_TERMS))}&mode=keyword&size=50`);
+    const r = await call("GET catalog (keyword)", "GET", `/api/search?q=${encodeURIComponent(pick(CATALOG_TERMS))}&mode=keyword&size=50&conference=${encodeURIComponent(opts.conference)}`);
     if (r.status === 200) learnCatalog(r.json);
   }
 
@@ -351,7 +353,7 @@ export async function runTraffic(opts: RunOptions): Promise<Stats> {
       case "register": { if (!(await register())) await call("GET /api/status", "GET", "/api/status"); return; }
       case "onboarding": {
         const s = await session();
-        if (s) await call("POST /api/onboarding", "POST", "/api/onboarding", { answers: answers(s) }, s.token);
+        if (s) await call("POST /api/onboarding", "POST", `/api/onboarding?conference=${encodeURIComponent(opts.conference)}`, { answers: answers(s) }, s.token);
         return;
       }
       case "scheduleSave": {
@@ -360,7 +362,7 @@ export async function runTraffic(opts: RunOptions): Promise<Stats> {
         const body = catalog.talkIds.length && rand() < 0.5
           ? { talkIds: Array.from({ length: 4 }, () => pick(catalog.talkIds)).filter((v, i, a) => a.indexOf(v) === i), maxTalks: 6 }
           : { answers: answers(s), maxTalks: 6 };
-        await call("POST /api/schedule", "POST", "/api/schedule", body, s.token);
+        await call("POST /api/schedule", "POST", `/api/schedule?conference=${encodeURIComponent(opts.conference)}`, body, s.token);
         return;
       }
       case "scheduleGet": {
@@ -407,7 +409,7 @@ export function formatPlan(url: string, p: Plan): string {
   return lines.join("\n");
 }
 
-export interface Args { url: string; minutes: number; rps: number; dryRun: boolean }
+export interface Args { url: string; conference: string; minutes: number; rps: number; dryRun: boolean }
 
 export function parseArgs(argv: string[]): Args {
   const get = (name: string) => {
@@ -415,13 +417,15 @@ export function parseArgs(argv: string[]): Args {
     return i >= 0 ? argv[i + 1] : undefined;
   };
   const url = get("--url") ?? process.env.APP_URL ?? "";
+  const conference = get("--conference") ?? process.env.CONFERENCE ?? "";
   const minutes = Number(get("--minutes") ?? 10);
   const rps = Number(get("--rps") ?? DEFAULT_RPS);
   if (!/^https?:\/\//.test(url)) throw new Error("--url http(s)://... is required (or APP_URL)");
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(conference)) throw new Error("--conference <slug> is required (or CONFERENCE)");
   if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("--minutes must be a positive number");
   if (!Number.isFinite(rps) || rps <= 0) throw new Error("--rps must be a positive number");
   if (rps > MAX_RPS) console.error(`--rps capped at ${MAX_RPS}`);
-  return { url, minutes: Math.min(minutes, MAX_MINUTES), rps: clampRps(rps), dryRun: argv.includes("--dry-run") };
+  return { url, conference, minutes: Math.min(minutes, MAX_MINUTES), rps: clampRps(rps), dryRun: argv.includes("--dry-run") };
 }
 
 export async function main(argv = process.argv.slice(2), log = (l: string) => console.log(l)): Promise<void> {
@@ -430,7 +434,7 @@ export async function main(argv = process.argv.slice(2), log = (l: string) => co
     log(formatPlan(args.url, planMix(args.minutes, args.rps)));
     return;
   }
-  const stats = await runTraffic({ url: args.url, minutes: args.minutes, rps: args.rps, log });
+  const stats = await runTraffic({ url: args.url, conference: args.conference, minutes: args.minutes, rps: args.rps, log });
   log(stats.summary());
 }
 

@@ -5,7 +5,7 @@ import { buildServer } from "../src/server.js";
 import { runTraffic } from "../../scripts/traffic.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
 import type { Db } from "../src/db/client.js";
-import { insertTalks, testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
 import { talk } from "./helpers.js";
 
 /** Runs the traffic generator against the real API (PGlite) over HTTP. */
@@ -36,7 +36,7 @@ describe("traffic generator against the API on a real in-process Postgres", () =
     let t = Date.now();
     const out: string[] = [];
     const stats = await runTraffic({
-      url, minutes: 0.5, rps: 5, now: () => t, sleep: async (ms) => { t += ms; }, log: (l) => out.push(l),
+      url, conference: TEST_CONFERENCE, minutes: 0.5, rps: 5, now: () => t, sleep: async (ms) => { t += ms; }, log: (l) => out.push(l),
     });
     const summary = stats.summary();
     expect(stats.total).toBeGreaterThan(100);

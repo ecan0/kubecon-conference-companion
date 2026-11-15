@@ -31,7 +31,7 @@ describe("rate limits per IPv6 /64", () => {
       db, embedder: new LocalHashEmbedder(), runClaude: null, rateLimits: { search: { max: 1 } },
     });
     apps.push(app, db);
-    const send = (remoteAddress: string) => app.inject({ method: "GET", url: "/api/search?q=k8s&mode=keyword", remoteAddress });
+    const send = (remoteAddress: string) => app.inject({ method: "GET", url: "/api/search?q=k8s&mode=keyword&conference=test-conf", remoteAddress });
     expect((await send("2001:db8:1:2::a")).statusCode).toBe(200);
     expect((await send("2001:db8:1:2::b")).statusCode).toBe(429);
     expect((await send("2001:db8:1:3::a")).statusCode).toBe(200);

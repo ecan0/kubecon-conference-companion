@@ -242,6 +242,10 @@ test("registrationUrl and data-qr=self (public URL from /api/config, slug from ?
     globalThis.location = { search: "", origin: "http://localhost:4310" };
     await renderAll({ querySelectorAll: () => [self2] });
     assert.equal(self2.width / 6, expected("http://192.168.1.5:4310/register.html?c=from-attr&via=qr"));
+    // neither ?c= nor a canvas conference: no code for an assumed event
+    const self3 = mk({ "data-qr": "self" }, {});
+    await renderAll({ querySelectorAll: () => [self3] });
+    assert.equal(self3.calls.length, 0, "no slug means no QR code");
     // and the path comes from this module's location: ../register.html next to js/
     assert.ok(new URL("../register.html", new URL("../js/qr.js", import.meta.url)).pathname.endsWith("/landing/register.html"));
   } finally {

@@ -33,7 +33,7 @@ for (const width of [375, 768]) {
   for (const path of ["onboarding", "schedule", "search", "map", "status", "kiosk", "navigate"]) {
     test(`mobile ${path} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 375 ? 812 : 1024 });
-      await page.goto(`/${path}`);
+      await page.goto(`/${path}?c=kubecon-na-2026`);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       if (path === "onboarding") await expect(page.getByLabel("kubernetes", { exact: true })).toBeVisible();
       if (path === "schedule") {

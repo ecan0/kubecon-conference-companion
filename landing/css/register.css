@@ -124,7 +124,7 @@ main > section.hero.reg > .wrap { height: 100%; display: block; }
 }
 .reg .chat-chip[aria-pressed="true"]::before {
   border-color: var(--accent-ink);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 5' shape-rendering='crispEdges'%3E%3Cpath fill='%230f1f10' d='M0 2h1v1H0zM1 3h1v1H1zM2 4h1v1H2zM3 3h1v1H3zM4 2h1v1H4zM5 1h1v1H5zM6 0h1v1H6z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 5' shape-rendering='crispEdges'%3E%3Cpath fill='%230b0e14' d='M0 2h1v1H0zM1 3h1v1H1zM2 4h1v1H2zM3 3h1v1H3zM4 2h1v1H4zM5 1h1v1H5zM6 0h1v1H6z'/%3E%3C/svg%3E");
 }
 .reg .chat-chip[data-custom]:not([aria-pressed="true"]) { border-style: dashed; }
 .reg .chat-chip[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }

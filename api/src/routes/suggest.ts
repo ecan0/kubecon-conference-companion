@@ -5,6 +5,7 @@ import { sendDbError } from "../search/errors.js";
 import { MAX_SUGGEST_CHARS, MIN_SUGGEST_CHARS, suggest } from "../suggest/suggest.js";
 import { withSpan } from "../telemetry/span.js";
 import { applyRateLimit, sendIfRateLimited } from "../http/rateLimit.js";
+import { readConference } from "../http/conference.js";
 
 export const SUGGEST_CACHE_MS = 30_000;
 const MAX_CACHE_ENTRIES = 500;
@@ -35,7 +36,7 @@ export const suggestRoutes: FastifyPluginAsync<SuggestRouteOptions> = async (app
     return reply.code(500).send({ error: "internal_error" });
   });
 
-  app.get<{ Querystring: { q?: unknown } }>(
+  app.get<{ Querystring: { q?: unknown; conference?: unknown } }>(
     SUGGEST_PATH,
     { config: { rateLimit: { max: opts.rateLimitPerMinute ?? 120, timeWindow: "1 minute" } } },
     async (req, reply) =>
@@ -50,16 +51,21 @@ export const suggestRoutes: FastifyPluginAsync<SuggestRouteOptions> = async (app
           span.setAttribute("http.response.status_code", 400);
           return reply.code(400).send({ error: "invalid_request", message: `q must be one string of at most ${MAX_SUGGEST_CHARS} characters` });
         }
+        const conference = readConference(req, reply);
+        if (conference === null) {
+          span.setAttribute("http.response.status_code", 400);
+          return reply;
+        }
         // Too short to suggest anything useful: answer without touching the database.
         if (q.length < MIN_SUGGEST_CHARS) {
           span.setAttribute("http.response.status_code", 200);
           return reply.send({ suggestions: [] } satisfies SuggestResponse);
         }
-        const key = q.toLowerCase();
+        const key = `${conference}|${q.toLowerCase()}`;
         const hit = cache.get(key);
         let value = hit && now() - hit.at < SUGGEST_CACHE_MS ? hit.value : undefined;
         if (!value) {
-          value = { suggestions: await suggest(opts.db, q) };
+          value = { suggestions: await suggest(opts.db, q, conference) };
           if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value as string);
           cache.set(key, { at: now(), value });
         }

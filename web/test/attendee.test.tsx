@@ -20,7 +20,7 @@ describe("attendee journey", () => {
     const save = vi.spyOn(api, "saveSchedule").mockResolvedValue({ ...schedule, droppedTalkIds: ["overlap"],
       skipped: [{ talkId: "overlap", conflictsWith: ["talk-1"], talk: overlap }] });
     vi.spyOn(api, "getSchedule").mockResolvedValue(schedule);
-    render(<MemoryRouter initialEntries={["/onboarding"]}><App /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/onboarding?c=kubecon-na-2026"]}><App /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText("What would you like to learn, in your own words?"), { target: { value: "secure supply chain" } });
     fireEvent.click(screen.getByRole("button", { name: "Find talks" }));
     await screen.findByRole("heading", { name: "My schedule" });
@@ -31,12 +31,21 @@ describe("attendee journey", () => {
     vi.spyOn(api, "search").mockResolvedValue({ q: "", mode: "keyword", tookMs: 1, hits: [] });
     const onboard = vi.spyOn(api, "onboarding");
     const save = vi.spyOn(api, "saveSchedule");
-    render(<MemoryRouter initialEntries={["/onboarding"]}><App /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/onboarding?c=kubecon-na-2026"]}><App /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText("What would you like to learn, in your own words?"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "Find talks" }));
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(onboard).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
+  });
+  it("asks for a conference before onboarding and does not query the API", async () => {
+    const onboard = vi.spyOn(api, "onboarding");
+    render(<MemoryRouter initialEntries={["/onboarding"]}><App /></MemoryRouter>);
+    expect(await screen.findByText(/Choose a conference first\./)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open the conference list" }).getAttribute("href")).toBe("/site/#conferences");
+    expect(screen.queryByRole("button", { name: "Find talks" })).toBeNull();
+    expect(api.catalogTopics).not.toHaveBeenCalled();
+    expect(onboard).not.toHaveBeenCalled();
   });
   it("retains the token when storage is unavailable", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("disabled"); });

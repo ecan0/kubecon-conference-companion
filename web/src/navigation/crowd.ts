@@ -12,7 +12,7 @@ export interface Crowd {
 
 const SKIN = ["f1c9a5", "d9a066", "a8693c", "6f4426", "f4d6bc"];
 const HAIR = ["2b1b12", "5a3a1e", "c9a227", "b34a2a", "1a1a1a", "d8d8d0"];
-const SHIRT = ["4fd1c5", "f0c24b", "ff7a59", "7bd88f", "6aa8ff", "f4f7ee", "e8e1c9"]; // no violet
+const SHIRT = ["4fd1c5", "f0c24b", "ff7a59", "7bd88f", "6aa8ff", "ffffff", "e8e1c9"]; // no violet
 const PANTS = ["24324a", "3a3a3a", "5c4a33", "1f3d2a", "8a8f98"];
 
 /** Decorative simulated attendees: seeded and deterministic, walking between rooms along the same graph as route().

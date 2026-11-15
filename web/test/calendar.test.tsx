@@ -30,7 +30,7 @@ it("downloads the whole schedule or one talk without navigation or a token in th
   });
   const clicks: string[] = [];
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { clicks.push(this.download); });
-  render(<MemoryRouter><Schedule /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><Schedule /></MemoryRouter>);
   const all = await screen.findByRole("button", { name: "Add to calendar" });
   fireEvent.click(all);
   await waitFor(() => expect(clicks).toEqual(["conference-schedule.ics"]));
@@ -47,7 +47,7 @@ it("offers registration when the calendar token expires and reports other errors
   vi.spyOn(api, "getSchedule").mockResolvedValue({ items: [{ talk }], updatedAt: "" });
   const calendar = vi.spyOn(api, "calendar").mockRejectedValueOnce(new Error("network"))
     .mockRejectedValueOnce(new ApiError("Calendar export failed: 401", 401));
-  render(<MemoryRouter><Schedule /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><Schedule /></MemoryRouter>);
   fireEvent.click(await screen.findByRole("button", { name: "Add to calendar" }));
   expect((await screen.findByRole("alert")).textContent).toContain("calendar could not be downloaded");
   fireEvent.click(screen.getByRole("button", { name: "Add to calendar" }));

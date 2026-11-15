@@ -12,6 +12,9 @@ import { runSearch } from "../src/search/service.js";
 // keyword leg has little to match on while the semantic leg should still find talks.
 const PARAPHRASE = "make sure nobody can tamper with the software I ship to customers";
 
+/** The seeded catalogue of the integration database (data/talks/kubecon-na-2026.json). */
+const CONFERENCE = "kubecon-na-2026";
+
 describe.skipIf(!process.env.DATABASE_URL)("hybrid search integration", () => {
   let db: Db;
   const embedder = createEmbedder(process.env);
@@ -21,8 +24,8 @@ describe.skipIf(!process.env.DATABASE_URL)("hybrid search integration", () => {
   afterAll(() => db.close());
 
   it("hybrid returns results for a paraphrased query that keyword misses", async () => {
-    const keyword = await runSearch(db, embedder, { text: PARAPHRASE, mode: "keyword", size: 10 });
-    const hybrid = await runSearch(db, embedder, { text: PARAPHRASE, mode: "hybrid", size: 10 });
+    const keyword = await runSearch(db, embedder, { text: PARAPHRASE, mode: "keyword", size: 10, conference: CONFERENCE });
+    const hybrid = await runSearch(db, embedder, { text: PARAPHRASE, mode: "hybrid", size: 10, conference: CONFERENCE });
 
     expect(hybrid.hits.length).toBeGreaterThan(0);
     // Hybrid must surface at least one talk found only through the semantic leg.
@@ -37,6 +40,7 @@ describe.skipIf(!process.env.DATABASE_URL)("hybrid search integration", () => {
       text: "getting started with kubernetes security",
       mode: "hybrid",
       size: 10,
+      conference: CONFERENCE,
       filters: { levels: ["beginner"] },
     });
     expect(r.hits.length).toBeGreaterThan(0);
