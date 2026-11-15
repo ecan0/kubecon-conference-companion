@@ -428,7 +428,7 @@ function enable() {
   }
   // ---- navigate: scene guide(), the "Find my room" card
   const roomName = (to) => (NAV_ROOMS.find((r) => r[0] === to) || [])[1] || cap(pretty(to));
-  const guideSummary = () => (st.guide.arrived ? `Arrived at ${st.guide.room}` : `Find my room: ${st.guide.room}`) + " (simulated signals)";
+  const guideSummary = () => (st.guide.arrived ? `Arrived at ${st.guide.room}` : `Find my room: ${st.guide.room}`) + " (demo: simulated signals)";
   function renderGuide() {
     const g = st.guide;
     if (!g) { guideCard.hidden = true; guideCard.replaceChildren(); return; }

@@ -17,7 +17,7 @@ const section = $("[data-chat]");
 
 if (section) {
   const params = new URLSearchParams(location.search);
-  const slug = params.get("c") || section.dataset.conference || "cloud-native-hackathon-slc-2026";
+  const slug = params.get("c") || section.dataset.conference || "";
   const log = $("[data-chat-log]", section);
   const input = $("[data-chat-input]", section);
   const modeEl = $("[data-chat-mode]", section);
@@ -26,7 +26,7 @@ if (section) {
   const verb = $("[data-reg-verb]");
 
   // ---------------------------------------------------------------- the mode line: says what is answering, nothing more
-  const MODE_TEXT = { claude: "Answers by Claude Haiku", scripted: "Scripted questions" };
+  const MODE_TEXT = { claude: "Answers by Claude Haiku", scripted: "Scripted questions", none: "Choose a conference first" };
   const STATE_TEXT = { loading: "Starting the chat" };
   function syncStatus() {
     const mode = section.dataset.mode;

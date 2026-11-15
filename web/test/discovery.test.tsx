@@ -13,13 +13,13 @@ const talk = { id: "talk", title: "Secure Kubernetes", speaker: "Demo Speaker", 
 it("compares both methods and displays the server query", async () => {
   const search = vi.spyOn(api, "search").mockImplementation(async (q, mode) => ({ q, mode, tookMs: 2,
     hits: mode === "hybrid" ? [{ talk, score: 1 }] : [], debug: { query: { match_all: {} } } }));
-  render(<Search />);
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.change(screen.getByLabelText("Query"), { target: { value: "secure my supply chain" } });
   fireEvent.click(screen.getByLabelText("Include query details"));
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   await screen.findByText("Comparison ready.");
-  expect(search).toHaveBeenCalledWith("secure my supply chain", "keyword", true, {});
-  expect(search).toHaveBeenCalledWith("secure my supply chain", "hybrid", true, {});
+  expect(search).toHaveBeenCalledWith("secure my supply chain", "keyword", true, {}, "kubecon-na-2026");
+  expect(search).toHaveBeenCalledWith("secure my supply chain", "hybrid", true, {}, "kubecon-na-2026");
   expect(within(screen.getByRole("region", { name: "Keyword" })).getByText(/No matching talks/)).toBeTruthy();
   expect(within(screen.getByRole("region", { name: "Hybrid" })).getByText(talk.title)).toBeTruthy();
   expect(screen.getAllByText(/match_all/)).toHaveLength(2);
@@ -30,7 +30,7 @@ it("retains successful results when the other method fails", async () => {
     if (mode === "keyword") throw new Error("offline");
     return { q, mode, tookMs: 1, hits: [{ talk, score: 1 }] };
   });
-  render(<Search />);
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   expect(await screen.findByRole("alert")).toBeTruthy();
   expect(screen.getByText(talk.title)).toBeTruthy();
@@ -38,8 +38,8 @@ it("retains successful results when the other method fails", async () => {
 
 it("prompts unregistered visitors to register instead of loading a schedule", async () => {
   const get = vi.spyOn(api, "getSchedule");
-  render(<MemoryRouter><Schedule /></MemoryRouter>);
-  expect(screen.getByRole("link", { name: "Register now" }).getAttribute("href")).toBe("/site/register.html");
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><Schedule /></MemoryRouter>);
+  expect(screen.getByRole("link", { name: "Register now" }).getAttribute("href")).toBe("/site/register.html?c=kubecon-na-2026");
   expect(get).not.toHaveBeenCalled();
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -47,7 +47,7 @@ it("prompts unregistered visitors to register instead of loading a schedule", as
 it("prompts to register again when the session token is rejected (401)", async () => {
   setToken("expired-session");
   vi.spyOn(api, "getSchedule").mockRejectedValue(new ApiError("GET /api/schedule failed: 401", 401));
-  render(<MemoryRouter><Schedule /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><Schedule /></MemoryRouter>);
   expect(await screen.findByRole("link", { name: "Register now" })).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -56,7 +56,7 @@ it("renders schedule times, room and recommendation reason and requests a QR", a
   setToken("session");
   vi.spyOn(api, "getSchedule").mockResolvedValue({ items: [{ talk, reason: "Matches your security interests" }], updatedAt: "" });
   const access = vi.spyOn(api, "accessToken").mockResolvedValue({ token: "short-lived", expiresAt: new Date(Date.now() + 60000).toISOString() });
-  render(<MemoryRouter><Schedule /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><Schedule /></MemoryRouter>);
   expect(await screen.findByText(talk.title)).toBeTruthy();
   expect(screen.getByText(/Room A/)).toBeTruthy();
   expect(screen.getByText("Matches your security interests")).toBeTruthy();
@@ -66,4 +66,18 @@ it("renders schedule times, room and recommendation reason and requests a QR", a
   expect(qr.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
   fireEvent.click(screen.getByRole("button", { name: "Hide code" }));
   expect(screen.queryByAltText("Short-lived room check-in QR code")).toBeNull();
+});
+
+it("asks for a conference instead of querying an event the address does not name", () => {
+  const get = vi.spyOn(api, "getSchedule");
+  const search = vi.spyOn(api, "search");
+  render(<MemoryRouter><Schedule /></MemoryRouter>);
+  expect(screen.getByText(/Choose a conference first\./)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Open the conference list" }).getAttribute("href")).toBe("/site/#conferences");
+  cleanup();
+  render(<MemoryRouter><Search /></MemoryRouter>);
+  expect(screen.getByText(/Choose a conference first\./)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Open the conference list" }).getAttribute("href")).toBe("/site/#conferences");
+  expect(get).not.toHaveBeenCalled();
+  expect(search).not.toHaveBeenCalled();
 });

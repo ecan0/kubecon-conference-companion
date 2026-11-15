@@ -13,11 +13,15 @@ const SUGGESTIONS: Suggestion[] = [
   { kind: "speaker", text: "Ada Lovelace" },
 ];
 
-function Harness({ load, onSubmit = vi.fn() }: { load: typeof fetchSuggestions; onSubmit?: () => void }) {
+function Harness({ load, onSubmit = vi.fn(), conference = "kubecon-na-2026" }: {
+  load: typeof fetchSuggestions;
+  onSubmit?: () => void;
+  conference?: string | null;
+}) {
   const [q, setQ] = useState("");
   return <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>
     <label htmlFor="q">Query</label>
-    <SuggestInput id="q" value={q} onChange={setQ} load={load} />
+    <SuggestInput id="q" value={q} onChange={setQ} load={load} conference={conference} />
   </form>;
 }
 const type = (value: string) => fireEvent.change(screen.getByLabelText("Query"), { target: { value } });
@@ -105,15 +109,26 @@ it("ignores a stale response when the user keeps typing", async () => {
   expect(signals[0]!.aborted).toBe(true);
 });
 
-it("client sends the query encoded and passes the abort signal", async () => {
+it("client sends the query encoded with its conference and passes the abort signal", async () => {
   const f = vi.fn().mockResolvedValue(new Response(JSON.stringify({ suggestions: SUGGESTIONS }), { status: 200 }));
   vi.stubGlobal("fetch", f);
   const controller = new AbortController();
-  expect(await fetchSuggestions("a&b c", controller.signal)).toEqual(SUGGESTIONS);
-  expect(f.mock.calls[0]![0]).toBe("/api/suggest?q=a%26b+c");
+  expect(await fetchSuggestions("a&b c", controller.signal, "kubecon-na-2026")).toEqual(SUGGESTIONS);
+  expect(f.mock.calls[0]![0]).toBe("/api/suggest?q=a%26b+c&conference=kubecon-na-2026");
   expect(f.mock.calls[0]![1]).toEqual({ signal: controller.signal });
   f.mockResolvedValue(new Response("{}", { status: 503 }));
-  await expect(fetchSuggestions("ab")).rejects.toThrow("503");
+  await expect(fetchSuggestions("ab", undefined, "kubecon-na-2026")).rejects.toThrow("503");
+  // Without a conference there is no scoped catalog to look up.
+  expect(await fetchSuggestions("ab")).toEqual([]);
+  expect(f).toHaveBeenCalledTimes(2);
+});
+
+it("does not look up suggestions without a conference", async () => {
+  const load = vi.fn().mockResolvedValue(SUGGESTIONS);
+  render(<Harness load={load} conference={null} />);
+  type("kube"); await settle();
+  expect(load).not.toHaveBeenCalled();
+  expect(screen.getByRole("combobox").getAttribute("aria-expanded")).toBe("false");
 });
 
 it("picking a suggestion equal to the current text does not swallow the next keystroke's lookup", async () => {

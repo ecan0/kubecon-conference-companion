@@ -62,9 +62,9 @@ test("/register sends the browser to /site/register.html and keeps the query str
 
 test("React routes still work beside the site (SPA fallback)", async ({ page }) => {
   await page.route("**/api/**", (route) => route.fulfill({ json: {} }));
-  await page.goto("/search");
+  await page.goto("/search?c=kubecon-na-2026");
   await expect(page.getByRole("heading", { level: 1, name: "Search talks" })).toBeVisible();
-  await expect(page).toHaveURL(/\/search$/);
+  await expect(page).toHaveURL(/\/search\?c=kubecon-na-2026$/);
   // The app header's logo leads back to the static home.
   await page.getByRole("link", { name: "Conference Companion" }).first().click();
   await expect(page).toHaveURL(/\/site\/$/);

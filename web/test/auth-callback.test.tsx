@@ -68,6 +68,13 @@ describe("/auth/:provider/callback", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/site/register.html?c=kubecon-na-2026&via=github"));
   });
 
+  it("carries the conference of the page a new account started from into registration", async () => {
+    vi.stubGlobal("fetch", reply(200, { provider: "github", displayName: "Grace", return: "/site/conference.html?c=pycon-us-2027", app: false, claim: { token: "claim", expiresAt: "2026-11-11T12:15:00.000Z" } }));
+    const replace = vi.spyOn(siteNavigation, "replace").mockImplementation(() => {});
+    renderAt("/auth/github/callback?code=abc&state=claim-conference");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/site/register.html?c=pycon-us-2027&via=github"));
+  });
+
   it("stores a returning attendee session token and follows the requested path", async () => {
     vi.stubGlobal("fetch", reply(200, { provider: "github", displayName: "Ada", return: "/schedule", app: false, session: { token: "attendee-session", expiresAt: "2026-11-11T20:00:00.000Z" } }));
     const replace = vi.spyOn(siteNavigation, "replace").mockImplementation(() => {});

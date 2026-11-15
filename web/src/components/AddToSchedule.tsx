@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { ScheduleResponse } from "@cc/shared";
 import { api, getToken } from "../api.js";
 
@@ -12,6 +12,7 @@ type State = "idle" | "saving" | "added" | "already" | "conflict" | "register" |
  * new talk overlaps a talk already scheduled, the server leaves it out and we say so.
  */
 export function AddToSchedule({ talkId, schedule = api, hasSession = () => !!getToken() }: { talkId: string; schedule?: ScheduleApi; hasSession?: () => boolean }) {
+  const { search } = useLocation();
   const [state, setState] = useState<State>(() => (hasSession() ? "idle" : "register"));
 
   async function onClick() {
@@ -30,7 +31,7 @@ export function AddToSchedule({ talkId, schedule = api, hasSession = () => !!get
   }
 
   if (state === "register") {
-    return <p role="status"><a href="/site/register.html">Register</a> to add talks to your schedule.</p>;
+    return <p role="status"><a href={`/site/register.html${search}`}>Register</a> to add talks to your schedule.</p>;
   }
   return <div className="add-to-schedule">
     <button type="button" disabled={state === "saving" || state === "added" || state === "already"} onClick={onClick}>

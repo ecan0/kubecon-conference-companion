@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Schedule } from "../src/pages/Schedule.js";
@@ -6,7 +6,13 @@ import { Kiosk } from "../src/pages/Kiosk.js";
 import { api, setToken } from "../src/api.js";
 import { RoomActivityBadge } from "../src/pages/RoomActivity.js";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+// Room activity is scoped to a conference; the kiosk reads it from `?c=` like the attendee pages.
+beforeEach(() => { window.history.replaceState(null, "", "/kiosk?c=kubecon-na-2026"); });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
+});
 const activity = { source: "in-process-scan-activity" as const, windowMinutes: 10,
   rooms: [{ room: "room-a", level: "many recent check-ins" as const }] };
 it("shows accessible room activity on schedule and kiosk using aggregate data", async () => {
@@ -16,7 +22,7 @@ it("shows accessible room activity on schedule and kiosk using aggregate data", 
     start: "2026-11-09T10:00:00Z", end: "2026-11-09T11:00:00Z",
   } }] });
   setToken("synthetic");
-  render(<MemoryRouter><Schedule /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><Schedule /></MemoryRouter>);
   expect(await screen.findByText("Scan activity: many recent check-ins")).toBeTruthy();
   expect(screen.queryByText(/%|capacity|almost full/)).toBeNull();
   cleanup();

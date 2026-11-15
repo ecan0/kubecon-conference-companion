@@ -25,6 +25,25 @@
     }
   },
   {
+    "slug": "kubecon-na-2026",
+    "name": "KubeCon + CloudNativeCon North America 2026",
+    "startDate": "2026-11-09",
+    "endDate": "2026-11-12",
+    "city": "Salt Lake City",
+    "district": "Downtown",
+    "venue": "Hyatt Regency Salt Lake City",
+    "topics": [
+      "kubernetes",
+      "ai",
+      "oss",
+      "end-user-talk",
+      "maintainer-track"
+    ],
+    "summary": "The Linux Foundation's flagship cloud native conference: talks, workshops and co-located events on Kubernetes and the CNCF projects.",
+    "assumed": false,
+    "url": "https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/"
+  },
+  {
     "slug": "aws-reinvent-2026",
     "name": "AWS re:Invent",
     "startDate": "2026-11-30",

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Cloud Native Hackathon: register by QR code or sign-in</title>
-<meta name="description" content="Cloud Native Hackathon, Monday 9 November 2026 at The Shop Workspace in Salt Lake City. Scan the QR code to register from your phone, or continue with GitHub.">
+<title>Conference Companion: register by QR code or sign-in</title>
+<meta name="description" content="Pick a conference, then register from your phone with a QR code or continue with GitHub.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Cloud Native Hackathon: register by QR code or sign-in">
-<meta property="og:description" content="Monday 9 November 2026, The Shop Workspace, Salt Lake City. Register from your phone.">
+<meta property="og:title" content="Conference Companion: register by QR code or sign-in">
+<meta property="og:description" content="Pick a conference, then register from your phone.">
 <meta property="og:image" content="share.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -70,8 +70,8 @@
         <div class="cc-reg">
           <div class="cc-reg__main">
             <p class="hero__kicker cc-hud"><span class="cc-hud__n">01 / 04</span></p>
-            <h1 id="hero-h">Register for <span data-c="name">Cloud Native Hackathon</span></h1>
-            <p class="hero__lead"><span data-c="date">Mon 9 Nov 2026</span>, <span data-c="venue">The Shop Workspace</span>, <span data-c="city">Salt Lake City</span>. Register in a chat for a schedule built from your interests and a QR ticket for the doors.</p>
+            <h1 id="hero-h">Register for <span data-c="name">Loading…</span></h1>
+            <p class="hero__lead"><time data-c="date"></time>, <span data-c="venue">Loading…</span>, <span data-c="city">Loading…</span>. Register in a chat for a schedule built from your interests and a QR ticket for the doors.</p>
             <p class="cc-demo" data-demo-note hidden>Demo event: its details are invented for this mockup.</p>
             <div class="cc-missing" data-missing hidden>
               <p>That address does not match a conference we know. Pick one from the list instead.</p>
@@ -79,10 +79,10 @@
             </div>
           </div>
           <div class="cc-reg__qr" data-found>
-            <span class="pxframe qr-wrap"><span class="pxframe__in"><canvas data-qr="self" data-qr-scale="5" data-qr-conference="cloud-native-hackathon-slc-2026" role="img" aria-label="QR code that opens the registration page for this conference on your phone"></canvas></span></span>
+            <span class="pxframe qr-wrap"><span class="pxframe__in"><canvas data-qr="self" data-qr-scale="5" data-qr-conference="" role="img" aria-label="QR code that opens the registration page for this conference on your phone"></canvas></span></span>
           </div>
           <div class="cc-act" data-found>
-            <div class="btn-row"><a class="btn btn--primary" data-c-link="register.html" href="register.html?c=cloud-native-hackathon-slc-2026">Register for a conference<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a></div>
+            <div class="btn-row"><a class="btn btn--primary" data-c-link="register.html" href="register.html">Register for a conference<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a></div>
           </div>
         </div>
       </div>
@@ -93,16 +93,14 @@
     <div class="wrap">
       <div class="panel" data-c-facts>
         <div class="cc-bar"><h2 id="event-h">Event details</h2><span class="cc-hud"><span class="cc-hud__n">02 / 04</span></span></div>
-        <p class="t-lead" data-c="summary">One-day hackathon with talks and builds on search, observability, Kubernetes, AI SRE and code review.</p>
-        <ul class="cc-chips" data-c-topics>
-          <li>search</li><li>observability</li><li>kubernetes</li><li>ai sre</li><li>code review</li>
-        </ul>
+        <p class="t-lead" data-c="summary">Loading…</p>
+        <ul class="cc-chips" data-c-topics></ul>
         <dl class="cc-facts">
-          <div><dt>Date</dt><dd data-c="date">Mon 9 Nov 2026</dd></div>
-          <div><dt>Venue</dt><dd data-c="venue">The Shop Workspace</dd></div>
-          <div><dt>City</dt><dd data-c="city">Salt Lake City</dd></div>
+          <div><dt>Date</dt><dd><time data-c="date"></time></dd></div>
+          <div><dt>Venue</dt><dd data-c="venue">Loading…</dd></div>
+          <div><dt>City</dt><dd data-c="city">Loading…</dd></div>
           <div data-c-row="site"><dt>Website</dt><dd><a class="link" data-c-site rel="noopener" href="#">Official site</a></dd></div>
-          <div data-c-row="capacity"><dt>Capacity</dt><dd><span data-c="capacity">200</span> attendees</dd></div>
+          <div data-c-row="capacity" hidden><dt>Capacity</dt><dd><span data-c="capacity"></span> attendees</dd></div>
         </dl>
       </div>
     </div>
@@ -138,6 +136,15 @@
         <a class="card tile-link" data-app-link="/onboarding" href="http://localhost:5173/onboarding"><svg class="ic ic-svg ic-24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h8m-8 7h8m-8 7h8M3 17l2 2l4-4M3 7l2 2l4-4"/></svg><h3>Start onboarding</h3><p>Say what you want to learn, and the schedule follows.</p></a>
         <a class="card tile-link" data-app-link="/status" href="http://localhost:5173/status"><svg class="ic ic-svg ic-24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg><h3>Check API status</h3><p><span data-status-badge></span></p></a>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section cc" id="talks" data-talk-section hidden aria-labelledby="talks-h">
+    <div class="wrap">
+      <div class="panel">
+        <div class="cc-bar"><h2 id="talks-h">Talks</h2></div>
+        <div data-talks-body></div>
       </div>
     </div>
   </section>

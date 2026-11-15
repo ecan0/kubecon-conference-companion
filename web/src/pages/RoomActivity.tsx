@@ -2,17 +2,19 @@ import { useEffect, useState } from "react";
 import type { RoomOccupancyResponse } from "@cc/shared";
 import { api } from "../api.js";
 
-export function useRoomActivity() {
+/** Recent scan activity for a conference's rooms; `null` disables the poll (no event chosen). */
+export function useRoomActivity(conference: string | null) {
   const [activity, setActivity] = useState<RoomOccupancyResponse | null>(null);
   const [generation, setGeneration] = useState(0);
   useEffect(() => {
+    if (!conference) return;
     let active = true;
     let loading = false;
     const load = async () => {
       if (loading) return;
       loading = true;
       try {
-        const result = await api.roomOccupancy();
+        const result = await api.roomOccupancy(conference);
         if (active) setActivity(Array.isArray(result.rooms) ? result : null);
       } catch { if (active) setActivity(null); }
       finally { loading = false; }
@@ -20,7 +22,7 @@ export function useRoomActivity() {
     void load();
     const interval = window.setInterval(() => void load(), 30000);
     return () => { active = false; window.clearInterval(interval); };
-  }, [generation]);
+  }, [conference, generation]);
   return { activity, refresh: () => setGeneration((value) => value + 1) };
 }
 

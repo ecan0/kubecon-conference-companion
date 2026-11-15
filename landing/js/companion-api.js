@@ -31,6 +31,21 @@ export function isSite(pathname = typeof location !== "undefined" ? location?.pa
  */
 export const apiUrl = (name) => `/api/${name}`;
 
+/** The catalogue slug the page was opened with (?c=), or "" when the visitor has not chosen a conference. */
+export function conferenceSlug(search = typeof location !== "undefined" && location ? location.search : "") {
+  const c = new URLSearchParams(search).get("c");
+  return typeof c === "string" ? c.trim() : "";
+}
+
+/**
+ * URL of a conference-scoped catalogue route (search, onboarding, suggest, catalog topics, rooms occupancy and
+ * placement). Every one of them answers 400 `conference_required` without the parameter
+ * (shared/src/contract.ts), so this returns null when the page has no ?c=: the caller must not make the call.
+ */
+export function scopedApiUrl(name, slug = conferenceSlug()) {
+  return slug ? `${apiUrl(name)}?conference=${encodeURIComponent(slug)}` : null;
+}
+
 export function onReady(fn) {
   if (typeof document === "undefined") return;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn, { once: true });
@@ -259,6 +274,21 @@ export function sessionToken() {
 }
 
 /**
+ * Signs out of this tab, exactly like signOut() in web/src/api.ts: the token is tab-scoped, so only the session keys
+ * go (and the worker forgets the copied schedule). The linked display profile in localStorage stays for "Sign in again".
+ */
+export function signOut() {
+  try {
+    const session = sessionStorage.getItem(OFFLINE_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(OFFLINE_KEY);
+    if (session) navigator.serviceWorker?.controller?.postMessage({ type: "forget-schedule", session });
+  } catch {
+    // storage unavailable: nothing was stored
+  }
+}
+
+/**
  * Finishes a sign-up against the real API (site mode): register, store the token for the React app, build the
  * personal schedule (onboarding -> search -> save, the same three calls as the Onboarding page), then fetch the
  * short-lived check-in token for the QR. Resolves a ticket:
@@ -291,17 +321,22 @@ export async function signUp(conference, profile, { returning = false } = {}) {
   try { sessionStorage.removeItem("cc.identity-claim"); } catch { /* storage unavailable */ }
   const ticket = { source: "api", attendeeId: reg.attendeeId, token: null, expiresAt: reg.expiresAt, qrExpiresAt: null, scheduleSaved: false };
 
-  try {
-    const result = await apiCall("/api/onboarding", { body: { answers: toOnboardingAnswers(profile) }, token: attendeeToken });
-    const qs = new URLSearchParams({ q: result.query.text, mode: result.query.mode });
-    const found = await apiCall(`/api/search?${qs}`, { method: "GET", token: attendeeToken });
-    const talkIds = selectTalks(found.hits ?? []);
-    if (talkIds.length) {
-      await apiCall("/api/schedule", { body: { talkIds }, token: attendeeToken });
-      ticket.scheduleSaved = true;
+  // Both routes are conference-scoped: without the page's ?c= there is no event to build a schedule for.
+  const slug = conferenceSlug();
+  if (slug) {
+    try {
+      const result = await apiCall(scopedApiUrl("onboarding", slug), { body: { answers: toOnboardingAnswers(profile) }, token: attendeeToken });
+      const qs = new URLSearchParams({ q: result.query.text, mode: result.query.mode, conference: slug });
+      const found = await apiCall(`${apiUrl("search")}?${qs}`, { method: "GET", token: attendeeToken });
+      const talkIds = selectTalks(found.hits ?? []);
+      if (talkIds.length) {
+        // A save by talk id is a by-id lookup: POST /api/schedule takes `conference` only alongside `answers`.
+        await apiCall("/api/schedule", { body: { talkIds }, token: attendeeToken });
+        ticket.scheduleSaved = true;
+      }
+    } catch {
+      // The attendee is registered; the schedule can still be built on the app's onboarding page.
     }
-  } catch {
-    // The attendee is registered; the schedule can still be built on the app's onboarding page.
   }
   try {
     const access = await fetchAccessToken(attendeeToken);
@@ -337,9 +372,13 @@ export function completeSignup(conference, profile, opts = {}) {
 export async function getLiveAggregates() {
   if (!isSite()) return null;
   try {
+    // The occupancy route is conference-scoped: with no ?c= there is no event whose rooms it could report.
+    const roomsUrl = scopedApiUrl("rooms/occupancy");
     const [agg, rooms] = await Promise.all([
       fetch("/api/interests/aggregate", { signal: timeoutSignal(4000), cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/rooms/occupancy", { signal: timeoutSignal(4000), cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      roomsUrl
+        ? fetch(roomsUrl, { signal: timeoutSignal(4000), cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        : Promise.resolve(null),
     ]);
     if (!agg || !Array.isArray(agg.topics) || !(agg.totalOptedIn > 0)) return null;
     const topics = agg.topics.filter((t) => typeof t?.topic === "string" && Number.isFinite(t.count));
@@ -355,6 +394,28 @@ export async function getLiveAggregates() {
       roomOccupancy: [],
       roomLevels: Array.isArray(rooms?.rooms) ? rooms.rooms.filter((r) => typeof r?.room === "string" && typeof r.level === "string") : [],
     };
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------------------- conference-scoped catalogue reads
+
+/**
+ * GET /api/catalog/topics?conference=<slug>: the tags of the talks published for an event.
+ * `{ topics: [] }` means the API knows of no talks for that conference (nothing has been published);
+ * null means "cannot tell" (no ?c= on the page, the route is missing on the preview server, or the API is down),
+ * so the page stays quiet instead of claiming a conference has no talks.
+ */
+export async function getConferenceTopics(slug = conferenceSlug()) {
+  const url = scopedApiUrl("catalog/topics", slug);
+  if (!url) return null;
+  try {
+    const r = await fetch(url, { signal: timeoutSignal(4000), headers: { accept: "application/json" }, cache: "no-store" });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!Array.isArray(j?.topics)) return null;
+    return { topics: j.topics.filter((t) => typeof t === "string" && t.trim().length > 0) };
   } catch {
     return null;
   }

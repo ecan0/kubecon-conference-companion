@@ -1,21 +1,23 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
-export function TopicChoices({ selected, onChange }: {
+export function TopicChoices({ selected, onChange, conference }: {
   selected: string[];
   onChange: (topics: string[]) => void;
+  conference: string | null;
 }) {
   const [tags, setTags] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (!conference) return;
     let active = true;
     setError("");
-    api.catalogTopics().then((result) => {
+    api.catalogTopics(conference).then((result) => {
       if (active) setTags(result.topics);
     }, () => { if (active) setError("Topics could not be loaded. Please retry before registering."); });
     return () => { active = false; };
-  }, [attempt]);
+  }, [attempt, conference]);
   return <fieldset>
     <legend>Topics that interest you</legend>
     <p>Select any that apply. These topics come from the talk catalog.</p>

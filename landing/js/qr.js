@@ -9,7 +9,6 @@
 
 import qrcode from "../vendor/qrcode.js";
 import { getConfig, onReady } from "./companion-api.js";
-import { DEFAULT_SLUG } from "./conferences.js";
 
 export const QUIET_ZONE = 4;
 export const DEFAULT_INK = "#111111";
@@ -187,7 +186,9 @@ export async function renderAll(root = document) {
       let text = value;
       if (value === "self") {
         const { publicUrl } = await getConfig();
-        const slug = new URLSearchParams(location.search).get("c") || canvas.dataset.qrConference || DEFAULT_SLUG;
+        const slug = new URLSearchParams(location.search).get("c") || canvas.dataset.qrConference;
+        // no conference in the address and none on the canvas: show no code rather than one for an assumed event
+        if (!slug) continue;
         text = registrationUrl({ origin: publicUrl || location.origin, slug, pagePath });
       }
       drawQr(canvas, text);

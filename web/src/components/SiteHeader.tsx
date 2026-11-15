@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { SignInWithGitHub } from "./SignInWithGitHub.js";
+import { AccountControl } from "./AccountControl.js";
 import "./site-shell.css";
 
 const LINKS = [
@@ -13,7 +13,7 @@ const LINKS = [
 /** App header: same structure as the landing nav; links collapse behind a menu button on narrow screens. */
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const toggle = useRef<HTMLButtonElement>(null);
   const header = useRef<HTMLElement>(null);
 
@@ -54,10 +54,10 @@ export function SiteHeader() {
         <div id="site-menu" className={open ? "site-menu is-open" : "site-menu"}>
           <nav aria-label="Main" className="site-nav">
             <a className="site-link" href="/site/#conferences">Conferences</a>
-            {LINKS.map((link) => <NavLink key={link.to} to={link.to} className="site-link">{link.label}</NavLink>)}
+            {LINKS.map((link) => <NavLink key={link.to} to={{ pathname: link.to, search }} className="site-link">{link.label}</NavLink>)}
             <a className="site-link" href="/site/profile.html">Profile</a>
           </nav>
-          <SignInWithGitHub />
+          <AccountControl />
         </div>
       </div>
     </header>

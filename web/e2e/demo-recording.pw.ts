@@ -39,7 +39,7 @@ test("record labelled offline UI fallback", async ({ browser }) => {
   try {
     // Sign-up is the static site (/site/register.html) now; this React-app recording starts from a synthetic session.
     await page.addInitScript(() => sessionStorage.setItem("cc.token", "synthetic-session-not-valid"));
-    await page.goto("http://127.0.0.1:4173/onboarding");
+    await page.goto("http://127.0.0.1:4173/onboarding?c=kubecon-na-2026");
     await page.getByLabel("kubernetes", { exact: true }).check();
     await page.screenshot({ path: resolve(output, "fallback-onboarding.png") });
     await page.waitForTimeout(1800);
@@ -57,7 +57,7 @@ test("record labelled offline UI fallback", async ({ browser }) => {
     await expect(page.getByText("Comparison ready.")).toBeVisible();
     await page.screenshot({ path: resolve(output, "fallback-search.png") });
     await page.waitForTimeout(1800);
-    await page.goto("/kiosk");
+    await page.goto("/kiosk?c=kubecon-na-2026");
     await page.getByLabel("Room", { exact: true }).fill(talk.room);
     await page.getByLabel(/Token \(if/).fill("synthetic-qr-not-valid");
     await page.getByRole("button", { name: "Check access" }).click();

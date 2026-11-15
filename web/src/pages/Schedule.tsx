@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import QRCode from "qrcode";
 import type { AccessTokenResponse, ScheduleResponse } from "@cc/shared";
 import { api, ApiError, getToken } from "../api.js";
@@ -7,11 +7,17 @@ import { Alternatives } from "../components/Alternatives.js";
 import { talkHref } from "../talksApi.js";
 import { SkippedTalks } from "../components/SkippedTalks.js";
 import { recallSkipped, rememberSkipped } from "../skippedTalks.js";
+import { NoConferenceState, UnpublishedTalksState, conferenceSlug, useConferenceEntry, useTalkAvailability } from "../components/PageState.js";
 import "./discovery.css";
 import { RoomActivityBadge, useRoomActivity } from "./RoomActivity.js";
 
 export function Schedule() {
-  const { activity } = useRoomActivity();
+  const { search } = useLocation();
+  const conference = conferenceSlug(search);
+  const { activity } = useRoomActivity(conference);
+  const conferenceEntry = useConferenceEntry(conference);
+  const talksAvailability = useTalkAvailability(conference);
+  const unpublished = talksAvailability === "unpublished";
   const [schedule, setSchedule] = useState<(ScheduleResponse & { offlineSavedAt?: string }) | null>(null);
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
@@ -58,7 +64,7 @@ export function Schedule() {
     } finally { setCalendarPending(false); }
   }
   useEffect(() => {
-    if (needsRegistration) return;
+    if (needsRegistration || !conference) return;
     let active = true;
     let timer: number | undefined;
     api.getSchedule().then((result) => {
@@ -78,7 +84,7 @@ export function Schedule() {
       else setError("Your schedule could not be loaded. Please reload or register again if your session expired.");
     });
     return () => { active = false; window.clearTimeout(timer); };
-  }, [needsRegistration, online, retry]);
+  }, [needsRegistration, conference, online, retry]);
   useEffect(() => {
     if (!access) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -102,16 +108,21 @@ export function Schedule() {
     } finally { setPending(false); }
   }
   const validQr = online && access && now < Date.parse(access.expiresAt);
+  if (!conference) return <section className="discovery">
+    <h1>My schedule</h1>
+    <NoConferenceState />
+  </section>;
   return <section className="discovery">
     <h1>My schedule</h1>
     {schedule?.offlineSavedAt && <p role="status">Offline: showing schedule saved at {new Date(schedule.offlineSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.</p>}
     {!online && <p role="status">QR needs a connection. Reconnect to create a fresh check-in code.</p>}
     <p>All session times use your device’s local time zone.</p>
     <p>Room activity reflects recent check-ins, not a headcount.</p>
-    {needsRegistration && <p role="status">Register to build your personal schedule. <a href="/site/register.html">Register now</a>.</p>}
+    {unpublished && <UnpublishedTalksState conference={conferenceEntry} />}
+    {needsRegistration && !unpublished && <p role="status">Register to build your personal schedule. <a href={`/site/register.html${search}`}>Register now</a>.</p>}
     {error && <p role="alert">{error}</p>}
-    {!schedule && !error && !needsRegistration && <p role="status">Loading your schedule…</p>}
-    {schedule && schedule.items.length === 0 && <p>No talks scheduled yet. <Link to="/onboarding">Find your talks</Link>.</p>}
+    {!schedule && !error && !needsRegistration && !unpublished && <p role="status">Loading your schedule…</p>}
+    {schedule && schedule.items.length === 0 && !unpublished && <p>No talks scheduled yet. <Link to={`/onboarding${search}`}>Find your talks</Link>.</p>}
     {schedule && schedule.items.length > 0 && <button type="button" disabled={calendarPending} onClick={() => void exportCalendar()}>
       {calendarPending ? "Preparing calendar…" : "Add to calendar"}
     </button>}

@@ -1,4 +1,4 @@
-import { routes, type RouteDef } from "@cc/shared";
+import { isConferenceSlug, routes, type RouteDef } from "@cc/shared";
 import { offlineExpiry, offlineSession, resetOfflineSession } from "./offline.js";
 import type {
   AuthProviderId,
@@ -46,11 +46,57 @@ export function setToken(token: string): void {
   }
 }
 
+/**
+ * Signs out of this tab. The token is session-scoped (and the profile in localStorage is the visitor's own),
+ * so only the tab's session keys go: the linked display profile stays for a later "Sign in again".
+ */
+export function signOut(): void {
+  memoryToken = null;
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // storage unavailable; the in-memory token is already gone
+  }
+  resetOfflineSession(); // removes cc.offline-session and tells the worker to forget the saved schedule
+}
+
+const LINKED_KEY = "cc.linked.v1";
+
+/** True when a sign-in left a display profile for `provider` in this browser; it says nothing about a live session. */
+export function hasLinkedAccount(provider: "github"): boolean {
+  try {
+    const raw = localStorage.getItem(LINKED_KEY);
+    if (!raw) return false;
+    const linked: unknown = JSON.parse(raw);
+    if (!linked || typeof linked !== "object" || Array.isArray(linked) || !(provider in linked)) return false;
+    const entry: unknown = linked[provider];
+    return !!entry && typeof entry === "object" && !Array.isArray(entry) && "linkedAt" in entry && entry.linkedAt != null;
+  } catch {
+    return false; // storage unavailable or corrupt
+  }
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** The `?c=` conference slug of the current address, or null when the page was opened without one. */
+export function conferenceFromLocation(): string | null {
+  const slug = new URLSearchParams(window.location.search).get("c");
+  return isConferenceSlug(slug) ? slug : null;
+}
+
+/**
+ * The required `conference` query for a catalogue route. The API has no default
+ * event, so a scoped call without a slug is a bug rather than a different result.
+ */
+function scopedQuery(conference: string | null): Record<string, string> {
+  if (!conference) throw new ApiError("conference_required", 400, "conference_required");
+  if (!isConferenceSlug(conference)) throw new ApiError("invalid_request", 400, "invalid_request");
+  return { conference };
 }
 
 async function call<T>(
@@ -117,14 +163,17 @@ export const api = {
     if (!res.ok) throw new ApiError(`GET /api/auth/providers failed: ${res.status}`, res.status);
     return (await res.json()) as AuthProvidersResponse;
   },
-  roomOccupancy: () => call<RoomOccupancyResponse>(routes.roomOccupancy),
-  catalogTopics: () => call<CatalogTopicsResponse>(routes.catalogTopics),
+  roomOccupancy: async (conference: string | null) =>
+    call<RoomOccupancyResponse>(routes.roomOccupancy, { query: scopedQuery(conference) }),
+  catalogTopics: async (conference: string | null) =>
+    call<CatalogTopicsResponse>(routes.catalogTopics, { query: scopedQuery(conference) }),
   status: () => call<StatusResponse>(routes.status),
   register: (body: RegisterRequest) => call<RegisterResponse>(routes.register, { body }),
-  onboarding: (body: OnboardingRequest) => call<OnboardingResponse>(routes.onboarding, { body }),
-  search: (q: string, mode: SearchMode, debug = false, filters: SearchFilterParams = {}) =>
+  onboarding: async (body: OnboardingRequest, conference: string | null) =>
+    call<OnboardingResponse>(routes.onboarding, { body, query: scopedQuery(conference) }),
+  search: async (q: string, mode: SearchMode, debug = false, filters: SearchFilterParams = {}, conference: string | null = null) =>
     call<SearchResponse & { debug?: unknown }>(routes.search, {
-      query: { q, mode, ...(debug ? { debug: "1" } : {}), ...searchFilterQuery(filters) },
+      query: { q, mode, ...(debug ? { debug: "1" } : {}), ...searchFilterQuery(filters), ...scopedQuery(conference) },
     }),
   getSchedule: async (): Promise<ScheduleResponse & { offlineSavedAt?: string }> => {
     const token = getToken();
@@ -149,7 +198,8 @@ export const api = {
     if (!res.ok) throw new ApiError(`Calendar export failed: ${res.status}`, res.status);
     return res.blob();
   },
-  saveSchedule: (body: SaveScheduleRequest) => call<ScheduleResponse>(routes.saveSchedule, { body }),
+  saveSchedule: async (body: SaveScheduleRequest, conference: string | null = null) =>
+    call<ScheduleResponse>(routes.saveSchedule, { body, query: body.answers ? scopedQuery(conference) : undefined }),
   accessToken: () => call<AccessTokenResponse>(routes.accessToken, { body: {} }),
   scan: scanRoom,
   aggregate: () => call<InterestAggregateResponse>(routes.interestsAggregate),
@@ -157,8 +207,11 @@ export const api = {
   clusters: (organizerKey = "") =>
     call<InterestClustersResponse>(routes.interestsClusters, { headers: organizerKey ? { "x-organizer-key": organizerKey } : {} }),
   /** Room placement suggestions for organizers; `organizerKey` is sent as x-organizer-key when set. */
-  roomPlacement: (organizerKey = "") =>
-    call<RoomPlacementResponse>(routes.roomPlacement, { headers: organizerKey ? { "x-organizer-key": organizerKey } : {} }),
+  roomPlacement: async (organizerKey = "", conference: string | null = null) =>
+    call<RoomPlacementResponse>(routes.roomPlacement, {
+      query: scopedQuery(conference),
+      headers: organizerKey ? { "x-organizer-key": organizerKey } : {},
+    }),
 };
 
 let providersPromise: Promise<AuthProviderId[]> | null = null;

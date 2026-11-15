@@ -1,12 +1,15 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { InterestAggregateResponse, InterestClustersResponse, RoomPlacementResponse, StatusResponse } from "@cc/shared";
 import { Organizer } from "../src/pages/Organizer.js";
 import { api, ApiError } from "../src/api.js";
 
+// Room placement is scoped to a conference, which the organizer page reads from `?c=`.
+beforeEach(() => { window.history.replaceState(null, "", "/organizer?c=kubecon-na-2026"); });
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
 });
 
 const aggregate: InterestAggregateResponse = {
@@ -110,7 +113,7 @@ it("asks for the organizer key on 401 and sends it on retry without storing it",
   fireEvent.change(screen.getByLabelText("Organizer key"), { target: { value: "s3cret" } });
   fireEvent.click(screen.getByRole("button", { name: "Load organizer data" }));
   await waitFor(() => expect(spy).toHaveBeenLastCalledWith("s3cret"));
-  await waitFor(() => expect(placementSpy).toHaveBeenLastCalledWith("s3cret"));
+  await waitFor(() => expect(placementSpy).toHaveBeenLastCalledWith("s3cret", "kubecon-na-2026"));
   expect(await screen.findByRole("rowheader", { name: "Scaling Kubernetes" })).toBeTruthy();
   expect(await screen.findByRole("rowheader", { name: "Kubernetes + Helm" })).toBeTruthy();
   expect(setItem.mock.calls.some((call) => String(call[1]).includes("s3cret"))).toBe(false);

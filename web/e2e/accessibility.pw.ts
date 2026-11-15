@@ -28,7 +28,7 @@ for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       // The schedule is personal: give the page a (synthetic) registered session, as sign-up would.
       if (path === "schedule") await page.addInitScript(() => sessionStorage.setItem("cc.token", "synthetic-token"));
-      await page.goto(`/${path}`);
+      await page.goto(`/${path}?c=kubecon-na-2026`);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       if (path === "onboarding") await expect(page.getByLabel("kubernetes", { exact: true })).toBeVisible();
       if (path === "clusters") await expect(page.getByText("Kubernetes + Helm")).toBeVisible();
@@ -53,7 +53,7 @@ for (const width of [375, 1280]) {
 for (const width of [375, 1280]) {
   test(`schedule without a session at ${width}px prompts to register and is accessible`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/schedule");
+    await page.goto("/schedule?c=kubecon-na-2026");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "Register now" })).toBeVisible();
     await expect(page.getByText(talk.title)).toHaveCount(0);

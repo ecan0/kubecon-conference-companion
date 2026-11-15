@@ -41,6 +41,11 @@ it("offers to register again when the session expired", () => {
   expect(isSessionExpired(new Error("401"))).toBe(false);
 });
 
+it("keeps the conference on the register-again link", () => {
+  render(<MemoryRouter initialEntries={["/schedule?c=kubecon-na-2026"]}><SessionExpiredState /></MemoryRouter>);
+  expect(screen.getByRole("link", { name: "Register again" }).getAttribute("href")).toBe("/site/register.html?c=kubecon-na-2026");
+});
+
 it("interest map: shows loading, then a friendly error with retry that reloads", async () => {
   const aggregate = vi.spyOn(api, "aggregate")
     .mockRejectedValueOnce(new Error("GET /api/interests/aggregate failed: 500"))
@@ -82,7 +87,9 @@ it("cluster map: network error offers a retry that reloads", async () => {
 
 it("search: no results suggest broader terms in a status region", async () => {
   vi.spyOn(api, "search").mockImplementation(async (q, mode) => ({ q, mode, tookMs: 1, hits: [] }));
-  render(<Search />);
+  // A conference with a programme: an empty result is the query's fault, not a missing programme.
+  vi.spyOn(api, "catalogTopics").mockResolvedValue({ topics: ["kubernetes"] });
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.change(screen.getByLabelText("Query"), { target: { value: "zzzz" } });
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   await screen.findByText("Comparison ready.");
@@ -94,7 +101,7 @@ it("search: a network error shows a retry button that searches again", async () 
   const search = vi.spyOn(api, "search")
     .mockRejectedValueOnce(new TypeError("Failed to fetch"))
     .mockImplementation(async (q, mode) => ({ q, mode, tookMs: 1, hits: [] }));
-  render(<Search />);
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   const alert = await screen.findByRole("alert");
   expect(alert.textContent).not.toContain("Failed to fetch");

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import type { SearchFacets, SearchMode } from "@cc/shared";
 import { Search } from "../src/pages/Search.js";
 import { api } from "../src/api.js";
@@ -28,7 +29,7 @@ function mockSearch() {
 describe("Search filter chips", () => {
   it("shows facet counts as toggle buttons and re-runs the search with the chosen filters", async () => {
     const search = mockSearch();
-    render(<Search />);
+    render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText("Query"), { target: { value: "supply chain" } });
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await screen.findByText("Comparison ready.");
@@ -40,9 +41,9 @@ describe("Search filter chips", () => {
 
     fireEvent.click(security);
     await screen.findByText("Comparison ready.");
-    expect(search).toHaveBeenLastCalledWith("supply chain", "hybrid", false, { track: ["Security"] });
+    expect(search).toHaveBeenLastCalledWith("supply chain", "hybrid", false, { track: ["Security"] }, "kubecon-na-2026");
     expect(within(screen.getByRole("group", { name: "Track" })).getByRole("button", { name: "Security (4)" }).getAttribute("aria-pressed")).toBe("true");
-    expect(window.location.search).toBe("?q=supply+chain&track=Security");
+    expect(window.location.search).toBe("?q=supply+chain&track=Security&c=kubecon-na-2026");
 
     fireEvent.click(within(screen.getByRole("group", { name: "Day" })).getByRole("button", { name: /Nov 10/ }));
     await screen.findByText("Comparison ready.");
@@ -53,22 +54,22 @@ describe("Search filter chips", () => {
       from: "2026-11-10T08:00:00-07:00",
       to: "2026-11-10T12:00:00-07:00",
       track: ["Security"],
-    });
-    expect(window.location.search).toBe("?q=supply+chain&day=2026-11-10&slot=morning&track=Security");
+    }, "kubecon-na-2026");
+    expect(window.location.search).toBe("?q=supply+chain&day=2026-11-10&slot=morning&track=Security&c=kubecon-na-2026");
   });
 
   it("restores the query and filters from the URL and runs the search on load", async () => {
     window.history.replaceState(null, "", "/search?q=gitops&level=beginner&track=Security&level=bogus");
     const search = mockSearch();
-    render(<Search />);
+    render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
     await screen.findByText("Comparison ready.");
     expect((screen.getByLabelText("Query") as HTMLInputElement).value).toBe("gitops");
-    expect(search).toHaveBeenCalledWith("gitops", "keyword", false, { level: ["beginner"], track: ["Security"] });
+    expect(search).toHaveBeenCalledWith("gitops", "keyword", false, { level: ["beginner"], track: ["Security"] }, "kubecon-na-2026");
     const level = within(screen.getByRole("group", { name: "Level" })).getByRole("button", { name: "Beginner (3)" });
     expect(level.getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    await waitFor(() => expect(window.location.search).toBe("?q=gitops"));
+    await waitFor(() => expect(window.location.search).toBe("?q=gitops&c=kubecon-na-2026"));
   });
 });
 

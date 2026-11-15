@@ -61,7 +61,7 @@ it.each([503, 502])("search falls back to keyword results without an error when 
     if (mode === "hybrid") throw new ApiError("hybrid failed", status);
     return { q, mode, tookMs: 3, hits: [{ talk, score: 1 }], debug: { query: "keyword-debug" } };
   });
-  render(<Search />);
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.click(screen.getByLabelText("Include query details"));
   fireEvent.change(screen.getByLabelText("Query"), { target: { value: "secure supply chain" } });
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
@@ -76,7 +76,7 @@ it.each([503, 502])("search falls back to keyword results without an error when 
 
 it("search still shows an error when keyword fails too, or hybrid fails with a non-ES error", async () => {
   vi.spyOn(api, "search").mockRejectedValue(new ApiError("down", 503));
-  render(<Search />);
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.change(screen.getByLabelText("Query"), { target: { value: "x" } });
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   expect((await screen.findAllByRole("alert")).length).toBe(2);
@@ -87,7 +87,8 @@ it("search still shows an error when keyword fails too, or hybrid fails with a n
     if (mode === "hybrid") throw new ApiError("bad", 400);
     return { q, mode, tookMs: 1, hits: [] };
   });
-  render(<Search />);
+  vi.spyOn(api, "catalogTopics").mockResolvedValue({ topics: ["kubernetes"] });
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
   fireEvent.change(screen.getByLabelText("Query"), { target: { value: "x" } });
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   expect(await screen.findByRole("alert")).toBeTruthy();

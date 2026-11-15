@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isSite, apiUrl, describeStatus, getLiveAggregates, getConfig, resetConfigCache, getStatus, signUp, completeSignup, storeToken, selectTalks,
   toRegisterRequest, toOnboardingAnswers, fetchAccessToken, applyAppLinks, TOKEN_KEY, DEFAULT_EXPERIENCE,
+  conferenceSlug, scopedApiUrl, getConferenceTopics,
 } from "../js/companion-api.js";
 import { registrationUrl } from "../js/qr.js";
 import { validProfile } from "./helpers.mjs";
@@ -15,10 +16,10 @@ function memoryStorage() {
 }
 
 /** Runs fn as if the page were served under /site/ on the app's origin, with a fake fetch and sessionStorage. */
-async function onSite(handler, fn) {
+async function onSite(handler, fn, { search = "" } = {}) {
   const saved = { fetch: globalThis.fetch, location: globalThis.location, sessionStorage: globalThis.sessionStorage };
   const calls = [];
-  globalThis.location = { pathname: "/site/register.html", origin: "http://app.test:5173", search: "" };
+  globalThis.location = { pathname: "/site/register.html", origin: "http://app.test:5173", search };
   Object.defineProperty(globalThis, "sessionStorage", { value: memoryStorage(), configurable: true, writable: true });
   globalThis.fetch = async (url, init = {}) => {
     const call = { url: String(url), method: init.method ?? "GET", headers: init.headers ?? {}, body: init.body ? JSON.parse(init.body) : undefined };
@@ -117,12 +118,23 @@ test("signUp: register -> app token in sessionStorage 'cc.token' -> onboarding -
     assert.deepEqual(calls[0].body.consent, { clusterMap: true, qrCheckin: true });
     assert.equal(calls[0].headers.authorization, undefined); // register is unauthenticated
     for (const c of calls.slice(1)) assert.equal(c.headers.authorization, "Bearer attendee.jwt");
+    // both catalogue routes carry the conference; a save by talk id is a by-id lookup and does not
+    assert.equal(calls[1].url, "/api/onboarding?conference=cn-2026");
+    assert.equal(calls[2].url, "/api/search?q=kubernetes+search&mode=hybrid&conference=cn-2026");
     assert.deepEqual(calls[3].body, { talkIds: ["b", "a"] });
-    assert.match(calls[2].url, /^\/api\/search\?q=kubernetes\+search&mode=hybrid$/);
     assert.equal(t.source, "api");
     assert.equal(t.token, "access.jwt", "the QR encodes the check-in token, not the session token");
     assert.equal(t.expiresAt, "2030-01-01T00:00:00Z");
     assert.equal(t.scheduleSaved, true);
+  }, { search: "?c=cn-2026" });
+});
+
+test("signUp: without ?c= the scoped catalogue routes are not called at all", async () => {
+  await onSite(realApi(), async (calls) => {
+    const t = await signUp({ slug: "cn-2026" }, validProfile());
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.url.split("?")[0]}`), ["POST /api/register", "POST /api/access/token"]);
+    assert.equal(t.source, "api");
+    assert.equal(t.scheduleSaved, false);
   });
 });
 
@@ -170,7 +182,7 @@ test("signUp: a failing schedule or check-in token still leaves a registered tic
     assert.equal(t.token, null);
     assert.equal(t.scheduleSaved, false);
     assert.equal(sessionStorage.getItem(TOKEN_KEY), "attendee.jwt");
-  });
+  }, { search: "?c=c" });
 });
 
 test("signUp: when registration fails the ticket is a local Demo ticket and no app token is stored", async () => {
@@ -192,7 +204,7 @@ test("fetchAccessToken validates the response", async () => {
 
 test("getLiveAggregates: demo-aggregates shape from the real aggregate route, null when unavailable", async () => {
   const agg = { topics: [{ topic: "kubernetes", count: 12 }, { topic: "other", count: 6 }], totalOptedIn: 30, suppressedBelow: 5, generatedAt: "x" };
-  await onSite((c) => (c.url === "/api/interests/aggregate" ? json(agg) : c.url === "/api/rooms/occupancy" ? json({ rooms: [{ room: "Hall A", level: "quiet" }] }) : new Response("", { status: 404 })), async () => {
+  await onSite((c) => (c.url === "/api/interests/aggregate" ? json(agg) : c.url.startsWith("/api/rooms/occupancy") ? json({ rooms: [{ room: "Hall A", level: "quiet" }] }) : new Response("", { status: 404 })), async (calls) => {
     const live = await getLiveAggregates();
     assert.equal(live.attendeeCount, 30);
     assert.deepEqual(live.topicCounts, [{ tag: "kubernetes", count: 12 }, { tag: "other", count: 6 }]);
@@ -200,12 +212,45 @@ test("getLiveAggregates: demo-aggregates shape from the real aggregate route, nu
     assert.equal(live.clusters[1].id, "other");
     assert.deepEqual(live.roomLevels, [{ room: "Hall A", level: "quiet" }]);
     assert.deepEqual(live.roomOccupancy, []);
+    assert.deepEqual(calls.map((c) => c.url), ["/api/interests/aggregate", "/api/rooms/occupancy?conference=cn-2026"]);
     const demo = JSON.parse((await import("node:fs")).readFileSync(new URL("../data/demo-aggregates.json", import.meta.url), "utf8"));
     for (const k of ["attendeeCount", "clusters", "topicCounts", "roomOccupancy", "suppressedGroups"]) assert.ok(k in live && k in demo, k);
+  }, { search: "?c=cn-2026" });
+  // no ?c=: the scoped occupancy route is not called, so the overlay has no room levels rather than a guess
+  await onSite((c) => (c.url === "/api/interests/aggregate" ? json(agg) : new Response("", { status: 404 })), async (calls) => {
+    const live = await getLiveAggregates();
+    assert.equal(live.attendeeCount, 30);
+    assert.deepEqual(live.roomLevels, []);
+    assert.deepEqual(calls.map((c) => c.url), ["/api/interests/aggregate"]);
   });
   await onSite(() => json({ topics: [], totalOptedIn: 0 }), async () => assert.equal(await getLiveAggregates(), null));
   await onSite(() => { throw new Error("down"); }, async () => assert.equal(await getLiveAggregates(), null));
   assert.equal(await getLiveAggregates(), null); // not on the site
+});
+
+test("conference scoped URLs: the page slug, or null when the visitor has not chosen a conference", () => {
+  assert.equal(conferenceSlug("?c=kubecon-na-2026"), "kubecon-na-2026");
+  assert.equal(conferenceSlug("?c=%20pycon-us-2027%20"), "pycon-us-2027");
+  assert.equal(conferenceSlug("?via=qr"), "");
+  assert.equal(conferenceSlug(""), "");
+  assert.equal(scopedApiUrl("search", "pycon-us-2027"), "/api/search?conference=pycon-us-2027");
+  assert.equal(scopedApiUrl("rooms/occupancy", "a b"), "/api/rooms/occupancy?conference=a%20b");
+  assert.equal(scopedApiUrl("search", ""), null);
+});
+
+test("getConferenceTopics: sends conference, empty topics means none published, null when the route cannot answer", async () => {
+  await onSite((c) => (c.url === "/api/catalog/topics?conference=pycon-us-2027" ? json({ topics: ["python", "  ", 7, "open source"] }) : new Response("", { status: 404 })), async (calls) => {
+    assert.deepEqual(await getConferenceTopics("pycon-us-2027"), { topics: ["python", "open source"] });
+    assert.deepEqual(calls.map((c) => c.url), ["/api/catalog/topics?conference=pycon-us-2027"]);
+  });
+  await onSite(() => json({ topics: [] }), async () => assert.deepEqual(await getConferenceTopics("pycon-us-2027"), { topics: [] }));
+  await onSite(() => new Response("", { status: 404 }), async () => assert.equal(await getConferenceTopics("pycon-us-2027"), null));
+  await onSite(() => json({ nope: 1 }), async () => assert.equal(await getConferenceTopics("pycon-us-2027"), null));
+  await onSite(() => { throw new TypeError("network"); }, async () => assert.equal(await getConferenceTopics("pycon-us-2027"), null));
+  await onSite(() => json({ topics: ["x"] }), async (calls) => {
+    assert.equal(await getConferenceTopics(), null, "no ?c=: not called");
+    assert.equal(calls.length, 0);
+  });
 });
 
 test("describeStatus understands the real StatusResponse (no `ok` field) and getStatus passes it through", async () => {
