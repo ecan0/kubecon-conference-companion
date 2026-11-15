@@ -101,13 +101,21 @@ export interface Consent {
   qrCheckin: boolean;
 }
 
+/**
+ * POST /api/register. `conference` must name a catalogue event with published talks: a missing slug
+ * answers 400 `{ error: "conference_required" }`, and a conference with no talks answers
+ * 409 `{ error: "schedule_not_published" }`.
+ */
 export interface RegisterRequest {
   name: string;
   email: string;
   interests: string[];
   consent: Consent;
-  /** Optional, never stored: conference slug and returning-visitor flag, used only for the live demo stream (GET /api/events). */
-  conference?: string;
+  /**
+   * Catalogue conference slug (the page's `?c=`). Required; still never stored on the attendee: it
+   * selects the talks gate and the conference label on the live demo stream (GET /api/events).
+   */
+  conference: string;
   returning?: boolean;
   /** From the sign-in callback `claim`: links the new profile to the signed-in provider account. */
   identityClaim?: string;
@@ -394,6 +402,10 @@ export interface ChatProfile {
 
 /** POST /api/chat (no auth). Stateless: send the whole transcript every turn. */
 export interface ChatRequest {
+  /**
+   * `slug` picks the conference. `topics` is only a fallback: the API resolves the topic chips from
+   * the conference's own talks (its most frequent tags) and ignores this list when talks exist.
+   */
   conference: { slug: string; name?: string; topics?: string[] };
   via?: ChatVia | null;
   messages: ChatMessage[];

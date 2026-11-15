@@ -39,7 +39,7 @@ Then collect these five items, one question per turn, strictly in this order. Be
 1. Their preferred name.
 2. Their role, meaning what they do.
 3. Three to six topics they want from the talks. Turn their free text into short lowercase tags such as kubernetes, observability, ai sre. The page shows tap-able topic chips under your message; free text is still fine.
-4. What they want out of the day: learn, hire, meet people or build.
+4. What they want out of the event: learn, hire, meet people or build.
 5. Any talk formats they prefer or want to avoid, such as deep dives, lightning talks, workshops or panels, or none. Always ask this, even after short answers.
 Then read the summary back, one item per line, exactly in this shape (real line breaks, no bullets, no markdown):
 Name: <name>
@@ -185,15 +185,15 @@ export function parseProfileMarker(
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-/** Conference names go into the model prompt, so keep them to a boring character set. */
+/** Conference names go into the model prompt, so keep them to a boring character set (":" keeps names such as "re:Invent"). */
 export function sanitizeConferenceName(name: unknown): string {
-  return cleanText(typeof name === "string" ? name : "", 80).replace(/[^\p{L}\p{N} .,&'’+-]/gu, "").trim();
+  return cleanText(typeof name === "string" ? name : "", 80).replace(/[^\p{L}\p{N} .,:&'’+-]/gu, "").trim();
 }
 
 export interface ChatConference {
   slug: string;
   name: string;
-  /** Topic chips for the conference (the API has no conference list, so the page sends them). Cleaned, at most 14. */
+  /** Topic chips from the page; the chat route uses them only when the conference has no talk tags. Cleaned, at most 14. */
   topics: string[];
 }
 

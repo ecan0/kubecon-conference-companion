@@ -13,12 +13,19 @@ import {
   parseProfileMarker,
   tidyReply,
   validateChatBody,
+  sanitizeConferenceName,
   SYSTEM_PROMPT,
 } from "../src/chat/model.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
-import { testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
+import { talk } from "./helpers.js";
 
 const sharedDb = await testDb();
+// Two talks under TEST_CONFERENCE: kubernetes x2, then ai, observability and security once each.
+await insertTalks(sharedDb, [
+  { ...talk("k1", 9, 10, { tags: ["kubernetes", "security", "ai"] }), level: "beginner" },
+  { ...talk("k2", 10, 11, { tags: ["kubernetes", "observability"] }), level: "beginner" },
+]);
 import { ASK_KINDS, CONFIRM_FIRST_OPTIONS, GOAL_OPTIONS, REGISTER_NOTICE, scriptedTurn } from "../src/chat/script.js";
 
 const conference = { slug: "cloud-native-hackathon-slc-2026", name: "Cloud Native Hackathon", topics: ["search", "observability"] };
@@ -77,6 +84,22 @@ describe("POST /api/chat in scripted mode (no CLI)", () => {
     const yes = (await post(app, { conference, known: profile, messages: [{ role: "assistant", content: "." }, { role: "user", content: "Yes, register me" }] })).json<ChatResponse>();
     expect(yes.done).toBe(true);
     expect(yes.profile).toEqual(profile);
+    await app.close();
+  });
+
+  it("serves topic chips from the conference's own talk tags, most frequent first", async () => {
+    const app = setup();
+    const topics = (await post(app, {
+      conference: { slug: TEST_CONFERENCE, name: "Test Conf", topics: ["client-only"] },
+      messages: [
+        { role: "assistant", content: "." }, { role: "user", content: "Ada" }, { role: "assistant", content: "." }, { role: "user", content: "eng" },
+      ],
+    })).json<ChatResponse>();
+    expect(topics.ask).toBe("topics");
+    // kubernetes appears twice; the rest tie and sort by tag.
+    expect(topics.options!.slice(0, 4)).toEqual(["kubernetes", "ai", "observability", "security"]);
+    // The page's own list is only the fallback for a conference with no talks.
+    expect(topics.options).not.toContain("client-only");
     await app.close();
   });
 
@@ -275,5 +298,12 @@ describe("browser sign-up request shapes", () => {
     expect(reg.success && reg.data.consent).toEqual({ clusterMap: true, qrCheckin: true });
     const answers = parseAnswers(mod.toOnboardingAnswers({ ...profile, goal: "learn", formats: "workshops" }));
     expect("answers" in answers).toBe(true);
+  });
+});
+
+describe("sanitizeConferenceName", () => {
+  it("keeps a colon in names such as AWS re:Invent and still drops markup", () => {
+    expect(sanitizeConferenceName("AWS re:Invent")).toBe("AWS re:Invent");
+    expect(sanitizeConferenceName("<b>PyCon</b> {US}")).toBe("bPyConb US");
   });
 });

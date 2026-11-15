@@ -14,13 +14,35 @@ import {
 } from "../chat/model.js";
 import type { ChatProfile } from "../chat/types.js";
 import { askFields, scriptedTurn, validateKnown } from "../chat/script.js";
+import type { Db } from "../db/client.js";
 import { DEFAULT_RATE_LIMITS, applyRateLimit, clientKey, limitFor, rateLimitedBody, type RouteLimit } from "../http/rateLimit.js";
 import { withSpan } from "../telemetry/span.js";
 
 export interface ChatRouteOptions {
+  db: Db;
   /** Spawns the Claude CLI; null/undefined means scripted mode (no CLI on this host, or CHAT_MODE=scripted). */
   runClaude?: ClaudeRunner | null;
   rateLimit?: RouteLimit;
+}
+
+/** A conference's tags change only on reseed; serve the topic chips from memory for this long. */
+export const CHAT_TOPICS_CACHE_MS = 30_000;
+/** Most frequent tags offered as topic chips (askOptions adds the common list after them). */
+export const MAX_CHAT_TOPICS = 10;
+
+/**
+ * The conference's own most frequent talk tags, for the topic chips. The browser does not know the
+ * catalogue, so the chips must come from the talks table; [] when the conference has no talks yet.
+ * `collate "C"` breaks ties by plain byte order so the chip order is stable.
+ */
+async function loadConferenceTopics(db: Db, conference: string): Promise<string[]> {
+  const rows = await db.query<{ tag: string }>(
+    `select tag, count(*)::int as n from talks, unnest(tags) as tag
+     where conference = $1 and btrim(tag) <> ''
+     group by tag order by n desc, tag collate "C" limit ${MAX_CHAT_TOPICS}`,
+    [conference],
+  );
+  return rows.rows.map((r) => r.tag);
 }
 
 /**
@@ -29,12 +51,38 @@ export interface ChatRouteOptions {
  * Stateless: the page sends the whole transcript every time. In `claude` mode the turn is answered by
  * the Claude Code CLI (chat/model.ts, locked down: no tools, no settings, one turn); on any failure, or
  * in `scripted` mode, the deterministic flow shared with the browser answers instead (chat/script.js).
- * Nothing is stored. Message text and profiles are never logged or put on spans.
+ * Topic chips are read from the talks table for the conference (its most frequent tags, cached per slug);
+ * the page's own topic list is only the fallback. Nothing is stored: message text and profiles are never
+ * logged or put on spans.
  */
 export const chatRoutes: FastifyPluginAsync<ChatRouteOptions> = async (app, opts) => {
   const runClaude = opts.runClaude ?? null;
   const activePerClient = new Map<string, number>();
   let activeTotal = 0;
+  // Per-slug cache of the conference's own topic chips (same pattern as routes/catalog.ts). Only a
+  // successful query is cached; concurrent turns share one query.
+  const cachedTopics = new Map<string, { at: number; topics: string[] }>();
+  const pendingTopics = new Map<string, Promise<string[]>>();
+
+  const topicsFor = async (slug: string): Promise<string[]> => {
+    const entry = cachedTopics.get(slug);
+    if (entry && Date.now() - entry.at < CHAT_TOPICS_CACHE_MS) return entry.topics;
+    let pending = pendingTopics.get(slug);
+    if (!pending) {
+      pending = loadConferenceTopics(opts.db, slug).finally(() => {
+        pendingTopics.delete(slug);
+      });
+      pendingTopics.set(slug, pending);
+    }
+    try {
+      const topics = await pending;
+      cachedTopics.set(slug, { at: Date.now(), topics });
+      return topics;
+    } catch {
+      // A database outage must not break the chat: the client's topics (or the common list) answer.
+      return [];
+    }
+  };
 
   await applyRateLimit(app);
 
@@ -50,8 +98,12 @@ export const chatRoutes: FastifyPluginAsync<ChatRouteOptions> = async (app, opts
           return reply.code(400).send({ error: "invalid_request", message: `invalid ${parsed.error}` });
         }
         const { conference, via, messages, known } = parsed.value;
+        // Chips come from the conference's own talks; the page's topic list is only the fallback for an
+        // event whose talks are not seeded yet.
+        const ownTopics = await topicsFor(conference.slug);
+        const topics = ownTopics.length ? ownTopics : conference.topics;
         const scripted = (): ChatResponse => ({
-          ...(scriptedTurn({ conference: { name: conference.name, topics: conference.topics }, via, messages, known }) as Omit<ChatResponse, "mode">),
+          ...(scriptedTurn({ conference: { name: conference.name, topics }, via, messages, known }) as Omit<ChatResponse, "mode">),
           mode: "scripted",
         });
 
@@ -82,7 +134,7 @@ export const chatRoutes: FastifyPluginAsync<ChatRouteOptions> = async (app, opts
                 done: false,
                 mode: "claude",
                 ...(askFields(ask, {
-                  conferenceTopics: conference.topics,
+                  conferenceTopics: topics,
                   returning: Boolean(known),
                   selected: ask === "topics" && known ? known.interests : undefined,
                 }) as Pick<ChatResponse, "ask" | "options" | "selected">),

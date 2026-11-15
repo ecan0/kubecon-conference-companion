@@ -324,7 +324,7 @@ function parseFirstConfirm(text) {
 }
 
 const CHANGE_FIELDS = [
-  [/name|call/i, "name"], [/role|job|work/i, "role"], [/topic|interest/i, "interests"], [/goal|day/i, "goal"], [/format|talk/i, "formats"],
+  [/name|call/i, "name"], [/role|job|work/i, "role"], [/topic|interest/i, "interests"], [/goal|event/i, "goal"], [/format|talk/i, "formats"],
 ];
 
 /**
@@ -398,7 +398,7 @@ function replay(messages, known) {
 const QUESTIONS = {
   role: (d) => `Nice to meet you, ${d.name}! What do you do for work?`,
   interests: () => "What would you like to hear about? Pick 3 to 6 topics below, or type your own.",
-  goal: () => "What are you hoping to get out of the day?",
+  goal: () => "What are you hoping to get out of the event?",
   formats: () => "Any kinds of talks you love or would rather skip, like deep dives or workshops? \"None\" is fine too.",
   confirm: (d) => summary(d),
   change: () => "Sure. What should I change: your name, role, topics, goal or formats?",

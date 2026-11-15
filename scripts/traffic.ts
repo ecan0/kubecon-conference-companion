@@ -314,6 +314,7 @@ export async function runTraffic(opts: RunOptions): Promise<Stats> {
       name: `${SYNTHETIC_NAME_PREFIX} ${registrations}`,
       interests: topics,
       consent: { clusterMap: true, qrCheckin: true },
+      conference: opts.conference,
     });
     const token = (r.json as { token?: unknown } | undefined)?.token;
     if (r.status !== 201 || typeof token !== "string") return undefined;

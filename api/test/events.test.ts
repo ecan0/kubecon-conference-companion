@@ -9,9 +9,12 @@ import { buildServer } from "../src/server.js";
 import { EventHub, MAX_EVENT_LISTENERS, MAX_EVENT_LISTENERS_PER_IP, buildRegisteredEvent, sanitizeLabel } from "../src/chat/events.js";
 import type { Db } from "../src/db/client.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
-import { testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
+import { talk } from "./helpers.js";
 
 const sharedDb = await testDb();
+// Registration is gated on the conference having published talks.
+await insertTalks(sharedDb, [{ ...talk("t1", 9, 10), level: "beginner" }]);
 
 describe("sanitizeLabel / buildRegisteredEvent", () => {
   it("first token only, A-Z a-z 0-9 only, at most 12 characters, Guest when nothing is left", () => {
@@ -48,7 +51,7 @@ describe("EventHub stream lifetime", () => {
 
 const body = (extra: Record<string, unknown> = {}) => ({
   name: "Ada Lovelace-Byron", email: "ada@example.com", interests: ["Kubernetes", "search", "tracing"],
-  consent: { clusterMap: true, qrCheckin: true }, ...extra,
+  consent: { clusterMap: true, qrCheckin: true }, conference: TEST_CONFERENCE, ...extra,
 });
 
 function setup(opts: { heartbeatMs?: number; failWrites?: boolean; showNames?: boolean; maxPerIp?: number } = {}) {
@@ -115,18 +118,18 @@ describe("GET /api/events", () => {
     expect(l.headers["cache-control"]).toBe("no-cache, no-transform");
     await l.waitFor(/: connected/);
 
-    const res = await app.inject({ method: "POST", url: "/api/register", payload: body({ conference: "cloud-native-hackathon-slc-2026", returning: true }) });
+    const res = await app.inject({ method: "POST", url: "/api/register", payload: body({ conference: TEST_CONFERENCE, returning: true }) });
     expect(res.statusCode).toBe(201);
     await l.waitFor(/event: registered/);
     const { token, attendeeId } = res.json<{ token: string; attendeeId: string }>();
     const text = l.text();
     for (const secret of ["Lovelace", "Byron", "ada@example", "ubernetes", "search", "tracing", token, attendeeId]) expect(text).not.toContain(secret);
-    expect(frames(text)).toEqual([{ event: "registered", data: { label: "Ada", conference: "cloud-native-hackathon-slc-2026", returning: true, interests: 3 } }]);
+    expect(frames(text)).toEqual([{ event: "registered", data: { label: "Ada", conference: TEST_CONFERENCE, returning: true, interests: 3 } }]);
 
-    // without the optional fields: returning false, conference "unknown"
+    // without the optional `returning` flag: returning false, conference from the required body field
     await app.inject({ method: "POST", url: "/api/register", payload: body() });
     await l.waitFor(/"returning":false/);
-    expect(frames(l.text())[1]!.data).toEqual({ label: "Ada", conference: "unknown", returning: false, interests: 3 });
+    expect(frames(l.text())[1]!.data).toEqual({ label: "Ada", conference: TEST_CONFERENCE, returning: false, interests: 3 });
     await l.close();
   });
 

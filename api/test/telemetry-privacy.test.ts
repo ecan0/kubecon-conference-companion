@@ -72,6 +72,7 @@ describe("attendee flow telemetry privacy", () => {
       const reg = await app.inject({ method: "POST", url: "/api/register", payload: {
         name: PRIVATE_NAME, interests: ["security"], location: LOCATION,
         consent: { clusterMap: false, qrCheckin: true },
+        conference: "test-conf",
       } });
       expect(reg.statusCode).toBe(201);
       const { attendeeId, token } = reg.json<{ attendeeId: string; token: string }>();

@@ -14,7 +14,7 @@ import { resetMetricsForTest } from "../src/telemetry/metrics.js";
 import { createTokenService } from "../src/auth/token.js";
 import type { Db } from "../src/db/client.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
-import { insertTalks, testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
 import { talk } from "./helpers.js";
 import { accessRoutes, scanBodySchema } from "../src/routes/access.js";
 import { registerRoutes } from "../src/routes/register.js";
@@ -107,7 +107,7 @@ describe("QR access", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/register",
-      payload: { name: "Ada", interests: ["kubernetes"], consent: { clusterMap: false, qrCheckin } },
+      payload: { name: "Ada", interests: ["kubernetes"], consent: { clusterMap: false, qrCheckin }, conference: TEST_CONFERENCE },
     });
     return res.json() as RegisterResponse;
   }
@@ -153,7 +153,7 @@ describe("QR access", () => {
   });
 
   it("issues a QR token when consent was never sent (defaults true), and 401 without or with a bad session", async () => {
-    const noConsent = await app.inject({ method: "POST", url: "/api/register", payload: { name: "Ada", interests: ["kubernetes"] } });
+    const noConsent = await app.inject({ method: "POST", url: "/api/register", payload: { name: "Ada", interests: ["kubernetes"], conference: TEST_CONFERENCE } });
     expect((await qrToken(noConsent.json() as RegisterResponse)).statusCode).toBe(200);
     expect((await app.inject({ method: "POST", url: "/api/access/token", payload: {} })).statusCode).toBe(401);
     const bad = await app.inject({ method: "POST", url: "/api/access/token", headers: { authorization: "Bearer a.b.c" }, payload: {} });

@@ -173,10 +173,12 @@ describe("runTraffic", () => {
     const regs = api.calls.filter((x) => x.path === "/api/register");
     expect(regs.length).toBeLessThanOrEqual(MAX_REGISTRATIONS);
     for (const r of regs) {
-      const b = r.body as { name: string; consent: unknown; email?: string };
+      const b = r.body as { name: string; consent: unknown; email?: string; conference?: string };
       expect(b.name.startsWith(SYNTHETIC_NAME_PREFIX)).toBe(true);
       expect(b.consent).toEqual({ clusterMap: true, qrCheckin: true });
       expect(b.email).toBeUndefined();
+      // Registration is gated on a conference with published talks, so every source sends the slug.
+      expect(b.conference).toBe("test-conf");
     }
     for (const s of api.calls.filter((x) => x.path === "/api/access/scan")) {
       expect((s.body as { room: string }).room).toMatch(/^(Salt Palace \| Level 1 \| Hall DE|Room 2)$/);

@@ -56,8 +56,10 @@ export const registerBodySchema = z.object({
       qrCheckin: z.boolean(),
     })
     .optional(),
-  // Optional and never stored: only feed the live demo stream (GET /api/events).
-  conference: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).optional(),
+  // Required and never stored: names the catalogue event whose talks gate registration and only feeds
+  // the live demo stream (GET /api/events). Missing answers 400 conference_required; a slug with no
+  // published talks answers 409 schedule_not_published.
+  conference: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
   returning: z.boolean().optional(),
   // From the sign-in callback; links the new profile to the provider account.
   identityClaim: z.string().max(2048).optional(),
@@ -158,6 +160,10 @@ export const registerRoutes: FastifyPluginAsync<RegisterRoutesOptions> = async (
     },
     async (req, reply) =>
       traced("register", "POST", routes.register.path, reply, async () => {
+        const rawConference = (req.body as { conference?: unknown } | null | undefined)?.conference;
+        if (rawConference === undefined || rawConference === null || rawConference === "") {
+          return reply.code(400).send({ error: "conference_required" });
+        }
         const parsed = registerBodySchema.safeParse(req.body);
         if (!parsed.success) {
           return reply.code(400).send({
@@ -167,6 +173,18 @@ export const registerRoutes: FastifyPluginAsync<RegisterRoutesOptions> = async (
           });
         }
         const body = parsed.data;
+
+        // Registration is only meaningful for an event that has published its talks; the attendee row
+        // itself stays conference-free. A database failure is reported, never read as "no talks".
+        let hasTalks: boolean;
+        try {
+          const r = await db.query("select 1 from talks where conference = $1 limit 1", [body.conference]);
+          hasTalks = r.rows.length > 0;
+        } catch {
+          return reply.code(503).send({ error: "storage_unavailable", message: "could not check the conference schedule" });
+        }
+        if (!hasTalks) return reply.code(409).send({ error: "schedule_not_published" });
+
         let identity: string | null = null;
         if (body.identityClaim !== undefined) {
           try {

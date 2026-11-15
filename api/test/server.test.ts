@@ -49,6 +49,7 @@ describe("api stub", () => {
         email: "ada@example.com",
         interests: ["kubernetes"],
         consent: { clusterMap: true, qrCheckin: true },
+        conference: "test-conf",
       },
     });
     expect(res.statusCode).toBe(201);
