@@ -83,13 +83,19 @@ independent of any one ingress, DNS, TLS, or secrets implementation.
 
 ## Seed the catalog
 
-The API image includes the talk files in `data/talks/` (one `<conference>.json` per event). The Job seeds every file and embeds all 417 KubeCon talks (about 20 seconds):
+The API image includes the talk files in `data/talks/` (one `<conference>.json` per event). The Job seeds every file: KubeCon NA 2026 (417 talks) and AWS re:Invent 2026 (2,475 talks).
+
+The Job pod needs the NetworkPolicy in `seed-networkpolicy.yaml`. Without it the pod cannot reach the database and fails with a connection timeout. Apply it first. The Job manifest uses the placeholder image `cc-api:local`, so set the API digest from `overlays/toghouse/kustomization.yaml` before you apply it:
 
 ```sh
-kubectl -n "$NAMESPACE" apply -f deploy/k8s/app/seed-job.yaml
-kubectl -n "$NAMESPACE" wait --for=condition=complete job/seed-talks --timeout=600s
+DIGEST=$(yq '.images[] | select(.name == "cc-api") | .digest' deploy/k8s/overlays/toghouse/kustomization.yaml)
+kubectl -n "$NAMESPACE" apply -f deploy/k8s/app/seed-networkpolicy.yaml
+sed "s#image: cc-api:local#image: ghcr.io/ecan0/conference-companion-api@$DIGEST#" deploy/k8s/app/seed-job.yaml | kubectl -n "$NAMESPACE" apply -f -
+kubectl -n "$NAMESPACE" wait --for=condition=complete job/seed-talks --timeout=900s
 kubectl -n "$NAMESPACE" logs job/seed-talks
 ```
 
 The Job is outside the base Kustomization on purpose: seeding is a deliberate one-shot. To rerun it, delete
 `job/seed-talks` and apply the manifest again.
+
+The NetworkPolicy stays after the Job. It only applies to pods labelled `app.kubernetes.io/name: seed-talks`.
