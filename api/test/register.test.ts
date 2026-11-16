@@ -133,6 +133,28 @@ describe("POST /api/register and GET /api/me", () => {
     expect((await register(validBody)).statusCode).toBe(201);
   });
 
+  it("answers 409 event_ended when every talk of the conference has ended, wiring nothing", async () => {
+    await insertTalks(db, [{ ...talk("gone", 9, 10), start: "2026-11-09T09:00:00.000Z", end: "2026-11-09T10:00:00.000Z" }], "ended-conf");
+    const ended = await register({ ...validBody, conference: "ended-conf" });
+    expect(ended.statusCode).toBe(409);
+    // Ended wins over not-published: the conference does have talks, they are simply over.
+    expect(ended.json()).toEqual({ error: "event_ended" });
+    for (const table of ["attendees", "entitlements", "identities"]) expect(await count(db, table)).toBe(0);
+  });
+
+  it("keeps registration open while one talk has not ended: the last end decides", async () => {
+    // Last talk ends exactly at the injected clock: not ended yet.
+    await insertTalks(db, [{ ...talk("till-now", 9, 10), start: "2026-11-09T11:00:00.000Z", end: "2026-11-09T12:00:00.000Z" }], "till-now-conf");
+    expect((await register({ ...validBody, conference: "till-now-conf" })).statusCode).toBe(201);
+
+    // Past talks plus one upcoming talk: max(end_at) is in the future, so the event is still open.
+    await insertTalks(db, [
+      { ...talk("over", 9, 10), start: "2026-11-08T09:00:00.000Z", end: "2026-11-08T10:00:00.000Z" },
+      { ...talk("next", 9, 10), start: "2026-11-12T09:00:00.000Z", end: "2026-11-12T10:00:00.000Z" },
+    ], "mixed-conf");
+    expect((await register({ ...validBody, conference: "mixed-conf" })).statusCode).toBe(201);
+  });
+
   it("consumes a valid identity claim by creating one identity row for the registered attendee", async () => {
     const claim = await claimFor("provider-hmac-id");
     const res = await register({ ...validBody, identityClaim: claim.token });
@@ -420,6 +442,32 @@ describe("POST /api/register and GET /api/me", () => {
     expect(spans[0]!.attributes["http.response.status_code"]).toBe(201);
     expect(JSON.stringify(spans[0]!.attributes)).not.toContain(reg.attendeeId);
     expect(JSON.stringify(spans[0]!.events)).not.toContain(reg.attendeeId);
+  });
+
+  it("attaches a new account's claim to the signed-in attendee; an account already linked elsewhere is refused", async () => {
+    const first = (await register()).json<RegisterResponse>();
+    const claim = (await claimFor("github-link-1")).token;
+    const link = (token: string, identityClaim: string) => app.inject({ method: "POST", url: "/api/me/identity", headers: { authorization: `Bearer ${token}` }, payload: { identityClaim } });
+    expect((await link(first.token, claim)).statusCode).toBe(204);
+    expect((await db.query<{ attendee_id: string }>("select attendee_id from identities where id = 'github-link-1'")).rows[0]!.attendee_id).toBe(first.attendeeId);
+    const second = (await register({ ...validBody, name: "Second" })).json<RegisterResponse>();
+    const again = await link(second.token, claim);
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ error: "identity_linked" });
+    expect((await db.query<{ attendee_id: string }>("select attendee_id from identities where id = 'github-link-1'")).rows[0]!.attendee_id).toBe(first.attendeeId);
+    const repeat = await link(first.token, claim);
+    expect(repeat.statusCode).toBe(204);
+  });
+
+  it("refuses to link without a session or with an invalid claim, and writes nothing", async () => {
+    const reg = (await register()).json<RegisterResponse>();
+    const claim = (await claimFor("github-link-2")).token;
+    const anonymous = await app.inject({ method: "POST", url: "/api/me/identity", payload: { identityClaim: claim } });
+    expect(anonymous.statusCode).toBe(401);
+    const invalid = await app.inject({ method: "POST", url: "/api/me/identity", headers: { authorization: `Bearer ${reg.token}` }, payload: { identityClaim: "invalid.claim" } });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ error: "invalid_identity_claim" });
+    expect(await count(db, "identities")).toBe(0);
   });
 });
 

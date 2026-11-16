@@ -58,7 +58,7 @@ export const registerBodySchema = z.object({
     .optional(),
   // Required and never stored: names the catalogue event whose talks gate registration and only feeds
   // the live demo stream (GET /api/events). Missing answers 400 conference_required; a slug with no
-  // published talks answers 409 schedule_not_published.
+  // published talks answers 409 schedule_not_published; one whose talks have all ended answers 409 event_ended.
   conference: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
   returning: z.boolean().optional(),
   // From the sign-in callback; links the new profile to the provider account.
@@ -174,16 +174,23 @@ export const registerRoutes: FastifyPluginAsync<RegisterRoutesOptions> = async (
         }
         const body = parsed.data;
 
-        // Registration is only meaningful for an event that has published its talks; the attendee row
-        // itself stays conference-free. A database failure is reported, never read as "no talks".
-        let hasTalks: boolean;
+        // Registration needs a conference with published talks that has not finished yet; the attendee row
+        // itself stays conference-free. One query covers both gates: the last talk end is null when nothing
+        // is published (409 schedule_not_published) and in the past once every talk has ended (409
+        // event_ended, which wins because such a conference does have talks). A database failure is
+        // reported, never read as "no talks".
+        let lastEnd: Date | string | null;
         try {
-          const r = await db.query("select 1 from talks where conference = $1 limit 1", [body.conference]);
-          hasTalks = r.rows.length > 0;
+          const r = await db.query<{ last_end: Date | string | null }>(
+            "select max(end_at) as last_end from talks where conference = $1",
+            [body.conference],
+          );
+          lastEnd = r.rows[0]?.last_end ?? null;
         } catch {
           return reply.code(503).send({ error: "storage_unavailable", message: "could not check the conference schedule" });
         }
-        if (!hasTalks) return reply.code(409).send({ error: "schedule_not_published" });
+        if (lastEnd === null) return reply.code(409).send({ error: "schedule_not_published" });
+        if (new Date(lastEnd).getTime() < now()) return reply.code(409).send({ error: "event_ended" });
 
         let identity: string | null = null;
         if (body.identityClaim !== undefined) {
@@ -282,6 +289,45 @@ export const registerRoutes: FastifyPluginAsync<RegisterRoutesOptions> = async (
         return reply.code(503).send({ error: "storage_unavailable", message: "could not delete profile" });
       }
       if (!profileExisted) return reply.code(404).send({ error: "not_found", message: "attendee not found" });
+      return reply.code(204).send();
+    }),
+  );
+
+  /**
+   * POST /api/me/identity: attaches a new account's sign-in claim (the 15-minute claim the OAuth callback returns for an
+   * account with no profile yet) to the signed-in attendee, so a registration made by chat gains its GitHub link. An
+   * identity already linked to a profile is refused with 409: that account signs in as its own profile instead.
+   * Nothing here logs or returns the identity.
+   */
+  const linkIdentityBody = z.object({ identityClaim: z.string().min(1).max(2048) });
+  app.post(routes.linkIdentity.path, limitFor(DEFAULT_RATE_LIMITS.me), async (req, reply) =>
+    traced("me.identity", "POST", routes.linkIdentity.path, reply, async () => {
+      const id = await requireAttendee(tokens, req, reply);
+      if (id === null) return reply;
+      const body = linkIdentityBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_request", message: "identityClaim is required" });
+      let identity: string;
+      try {
+        identity = await tokens.verify(body.data.identityClaim, { audience: "identity-claim" });
+      } catch {
+        return reply.code(400).send({ error: "invalid_identity_claim", message: "identityClaim: expired or invalid, sign in again" });
+      }
+      try {
+        const attendee = await db.query<{ expires_at: Date | string }>("select expires_at from attendees where id = $1", [id]);
+        const row = attendee.rows[0];
+        if (!row) return reply.code(401).send({ error: "unauthorized", message: "attendee not found" });
+        const linked = await db.query(
+          "insert into identities (id, attendee_id, created_at, expires_at) values ($1, $2, $3, $4) on conflict (id) do nothing",
+          [identity, id, new Date(now()), row.expires_at],
+        );
+        if (linked.rowCount === 0) {
+          // The same attendee linking again (a second effect run under React StrictMode) is not a conflict.
+          const owner = await db.query<{ attendee_id: string }>("select attendee_id from identities where id = $1", [identity]);
+          if (owner.rows[0]?.attendee_id !== id) return reply.code(409).send({ error: "identity_linked", message: "this account already has a profile; sign in as that profile instead" });
+        }
+      } catch {
+        return reply.code(503).send({ error: "storage_unavailable", message: "could not link the account" });
+      }
       return reply.code(204).send();
     }),
   );

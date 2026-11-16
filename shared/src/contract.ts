@@ -102,9 +102,11 @@ export interface Consent {
 }
 
 /**
- * POST /api/register. `conference` must name a catalogue event with published talks: a missing slug
- * answers 400 `{ error: "conference_required" }`, and a conference with no talks answers
- * 409 `{ error: "schedule_not_published" }`.
+ * POST /api/register. `conference` must name a catalogue event with published talks that has not
+ * finished yet: a missing slug answers 400 `{ error: "conference_required" }`, a conference with no
+ * talks answers 409 `{ error: "schedule_not_published" }`, and a conference whose talks have all
+ * ended answers 409 `{ error: "event_ended" }` (ended wins when both apply). The talks themselves
+ * stay browsable; only registration closes.
  */
 export interface RegisterRequest {
   name: string;
@@ -487,6 +489,8 @@ export const routes = {
   me: { method: "GET", path: "/api/me" },
   /** Bearer session token. Deletes the caller's profile, saved schedule and entitlement; 204 with no body, 401 if already gone. */
   deleteMe: { method: "DELETE", path: "/api/me" },
+  /** Bearer session token, body `{ identityClaim }`: attaches a new account's sign-in claim to the signed-in attendee. 204; 401 without a session; 400 for an invalid claim; 409 when the account already has a profile. */
+  linkIdentity: { method: "POST", path: "/api/me/identity" },
   /** Catalog route. Query: `conference` (required). */
   onboarding: { method: "POST", path: "/api/onboarding" },
   /** Catalog route. Query: `conference` (required), plus the optional search filters. */
