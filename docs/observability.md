@@ -135,4 +135,4 @@ token in the browser bundle.
 ## Runtime requirements
 
 The OTel JS 3.x / 0.301 packages and `@fastify/otel` need Node >= 22.15, so
-the API and web build images use Node 22 (the API on Debian slim, the web image on alpine).
+the API and web build images use Node 26 (the API on Debian slim, the web image on alpine).

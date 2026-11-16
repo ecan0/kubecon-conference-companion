@@ -9,7 +9,7 @@
 [Cloud Native Hackathon](https://www.wemakedevs.org/hackathons/cnh) entry submitted with the intent to simplify the registration, scheduling, and attendance of tech conferences in one unified platform. Sign up, find talks, build conflict-free schedules, and check into events with QR + Bluetooth, all while tailoring to your selected tech interests.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ecan0/kubecon-conference-companion/ci.yml?branch=main&label=CI&labelColor=0b0e14&color=326ce5)](https://github.com/ecan0/kubecon-conference-companion/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-326ce5?labelColor=0b0e14)](LICENSE) [![Node >=22](https://img.shields.io/badge/node-%3E%3D22-339933?logo=nodedotjs&logoColor=white&labelColor=0b0e14)](package.json) [![TypeScript 7](https://img.shields.io/badge/typescript-7-3178c6?logo=typescript&logoColor=white&labelColor=0b0e14)](package.json) [![Kubernetes](https://img.shields.io/badge/kubernetes-deployed-326ce5?logo=kubernetes&logoColor=white&labelColor=0b0e14)](deploy/k8s) [![Argo CD](https://img.shields.io/badge/argo%20cd-GitOps-ef7b4d?logo=argo&logoColor=white&labelColor=0b0e14)](deploy/k8s/overlays/toghouse)
+[![License: MIT](https://img.shields.io/badge/license-MIT-326ce5?labelColor=0b0e14)](LICENSE) [![Node >=26](https://img.shields.io/badge/node-%3E%3D26-339933?logo=nodedotjs&logoColor=white&labelColor=0b0e14)](package.json) [![TypeScript 7](https://img.shields.io/badge/typescript-7-3178c6?logo=typescript&logoColor=white&labelColor=0b0e14)](package.json) [![Kubernetes](https://img.shields.io/badge/kubernetes-deployed-326ce5?logo=kubernetes&logoColor=white&labelColor=0b0e14)](deploy/k8s) [![Argo CD](https://img.shields.io/badge/argo%20cd-GitOps-ef7b4d?logo=argo&logoColor=white&labelColor=0b0e14)](deploy/k8s/overlays/toghouse)
 
 **Live demo:** [conference-companion.ecan.pro](https://conference-companion.ecan.pro) · [Design document](Conference%20Companion_%20Design%20Doc.md) · [Hackathon evidence](docs/track-evidence.md)
 
@@ -42,7 +42,7 @@ Source: [docs/architecture.drawio](docs/architecture.drawio).
 
 ## Run it locally
 
-**Prerequisites:** Node 22.15+, npm, Docker.
+**Prerequisites:** Node 26+, npm, Docker.
 
 ```sh
 npm ci

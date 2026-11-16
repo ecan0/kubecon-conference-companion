@@ -1,7 +1,7 @@
 # Landing: server and headless logic
 
 Backend and front-end logic for the Conference Companion landing-page mockup. No markup and no styling live here.
-Zero runtime dependencies: Node 22+ built-ins only. `landing/` is not an npm workspace of the repo root.
+Zero runtime dependencies: Node 26+ built-ins only. `landing/` is not an npm workspace of the repo root.
 
 ```
 node landing/server.mjs        # http://127.0.0.1:4310
