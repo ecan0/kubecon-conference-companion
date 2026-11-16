@@ -5,9 +5,12 @@ import { buildServer } from "../src/server.js";
 import { createStateStore, identityId, sanitizeReturn } from "../src/auth/oauth.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
 import type { Db } from "../src/db/client.js";
-import { testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
+import { talk } from "./helpers.js";
 
 const sharedDb = await testDb();
+// Registration only succeeds for a conference with published talks.
+await insertTalks(sharedDb, [{ ...talk("t1", 9, 10), level: "beginner" }]);
 beforeEach(async () => {
   for (const table of ["identities", "schedules", "entitlements", "attendees"]) await sharedDb.query(`delete from ${table}`);
 });
@@ -199,7 +202,7 @@ describe("POST /api/auth/:provider/callback", () => {
     const first = await callback(app, "github", { code: "c", state: firstState });
     const claim = first.json<AuthCallbackResponse>().claim?.token;
     expect(claim).toBeTruthy();
-    const created = await app.inject({ method: "POST", url: "/api/register", payload: { name: "Ada", interests: ["search"], identityClaim: claim, consent: { clusterMap: true, qrCheckin: false } } });
+    const created = await app.inject({ method: "POST", url: "/api/register", payload: { name: "Ada", interests: ["search"], identityClaim: claim, consent: { clusterMap: true, qrCheckin: false }, conference: TEST_CONFERENCE } });
     expect(created.statusCode).toBe(201);
     const attendeeId = created.json<{ attendeeId: string }>().attendeeId;
     expect(await identityRows(sharedDb)).toEqual([identityId(ENV.IDENTITY_HASH_KEY, "github", "9002")]);

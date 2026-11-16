@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { loadConferences, filterConferences, getConference, nextEvent, resetConferencesCache, FALLBACK_CONFERENCES, withConference, setConferenceQuery } from "../js/conferences.js";
+import { loadConferences, filterConferences, getConference, hasEnded, nextEvent, resetConferencesCache, FALLBACK_CONFERENCES, withConference, setConferenceQuery, CITY_CENTRES, centreOf, distanceKm } from "../js/conferences.js";
 
 const data = JSON.parse(fs.readFileSync(new URL("../data/conferences.json", import.meta.url), "utf8"));
 const slugs = (l) => l.map((c) => c.slug);
@@ -154,6 +154,33 @@ test("nextEvent: soonest event that has not ended; the latest once all are over"
   assert.equal(nextEvent([], "2026-11-10"), null);
 });
 
+test("hasEnded: an event has ended only once its last day is over everywhere on Earth", () => {
+  const at = (iso) => Date.parse(iso);
+  const kubecon = data.find((c) => c.slug === "kubecon-na-2026"); // runs to 12 November
+  assert.equal(hasEnded(kubecon, at("2026-11-09T16:00:00Z")), false); // while it runs
+  assert.equal(hasEnded(kubecon, at("2026-11-12T23:00:00Z")), false); // the last day, in the evening
+  assert.equal(hasEnded(kubecon, at("2026-11-13T11:59:59.000Z")), false); // still 12 November at −12:00
+  assert.equal(hasEnded(kubecon, at("2026-11-13T11:59:59.999Z")), false); // the last instant of that day
+  assert.equal(hasEnded(kubecon, at("2026-11-13T12:00:00.000Z")), true); // midnight, the next day, even at −12:00
+  assert.equal(hasEnded(kubecon, at("2026-11-15T08:00:00Z")), true); // today: the event is over
+
+  const hackathon = data.find((c) => c.slug === "cloud-native-hackathon-slc-2026"); // one day, 9 November
+  assert.equal(hasEnded(hackathon, at("2026-11-09T12:00:00Z")), false);
+  assert.equal(hasEnded(hackathon, at("2026-11-10T11:59:59.000Z")), false);
+  assert.equal(hasEnded(hackathon, at("2026-11-10T12:00:00.000Z")), true);
+
+  const reInvent = data.find((c) => c.slug === "aws-reinvent-2026"); // 30 November to 4 December: still to come
+  assert.equal(hasEnded(reInvent, at("2026-11-15T10:00:00Z")), false);
+  assert.equal(hasEnded(reInvent, at("2026-12-05T12:00:00Z")), true);
+
+  // an event with no endDate uses its startDate; no date at all, or a broken one, has not ended
+  assert.equal(hasEnded({ slug: "x", startDate: "2026-01-02" }, at("2026-01-03T12:00:00Z")), true);
+  assert.equal(hasEnded({ slug: "x", startDate: "2026-01-02" }, at("2026-01-03T11:00:00Z")), false);
+  assert.equal(hasEnded({ slug: "x", startDate: "not-a-date" }, at("2030-01-01T00:00:00Z")), false);
+  assert.equal(hasEnded(null, at("2030-01-01T00:00:00Z")), false);
+  assert.equal(hasEnded({ slug: "x" }, at("2030-01-01T00:00:00Z")), false);
+});
+
 test("withConference: keeps the path, adds c, keeps an existing query and hash", () => {
   assert.equal(withConference("register.html", "kubecon-na-2026"), "register.html?c=kubecon-na-2026");
   assert.equal(withConference("/navigate", "pycon-us-2027"), "/navigate?c=pycon-us-2027");
@@ -171,4 +198,53 @@ test("setConferenceQuery: adds c and via to the query and keeps the address and 
   const bare = { search: "" };
   setConferenceQuery(bare, "pycon-us-2027");
   assert.equal(bare.search, "c=pycon-us-2027");
+});
+
+// Local noon, so the local calendar day the filters read is the day written here in every time zone.
+const NOV_15 = new Date(2026, 10, 15, 12);
+
+test("distanceKm and centreOf: every catalogue city has a centre; distances are great-circle km", () => {
+  for (const c of data) assert.ok(centreOf(c), `${c.city} needs a centre`);
+  assert.equal(centreOf({ city: "Atlantis" }), null);
+  const slc = CITY_CENTRES["Salt Lake City"];
+  assert.equal(distanceKm(slc, slc), 0);
+  assert.ok(Math.abs(distanceKm(slc, CITY_CENTRES["Las Vegas"]) - 583) < 5, "Salt Lake City to Las Vegas is about 583 km");
+});
+
+test("filterConferences: upcoming drops events that have ended", () => {
+  assert.equal(filterConferences(data, { upcoming: true, now: NOV_15 }).length, 11); // the hackathon and KubeCon NA 2026 ended on 12 Nov
+  assert.equal(filterConferences(data, { upcoming: false, now: NOV_15 }).length, 13);
+});
+
+test("filterConferences: next 6 months keeps events that have not ended and start by 15 May 2027", () => {
+  assert.deepEqual(slugs(filterConferences(data, { nextMonths: true, now: NOV_15 })), [
+    "aws-reinvent-2026", "scale-24x-2027", "srecon27-americas", "google-cloud-next-2027",
+    "confidential-computing-summit-2027", "agntcon-mcpcon-na-2027", "pycon-us-2027",
+  ]);
+});
+
+test("filterConferences: six months is clamped to the end of a shorter month", () => {
+  const list = [{ slug: "a", name: "A", city: "X", startDate: "2028-02-29", endDate: "2028-02-29", topics: [] }];
+  assert.equal(filterConferences(list, { nextMonths: true, now: new Date(2027, 7, 31, 12) }).length, 1, "cut-off is 29 Feb 2028");
+  const later = [{ ...list[0], slug: "b", startDate: "2028-03-01", endDate: "2028-03-01" }];
+  assert.equal(filterConferences(later, { nextMonths: true, now: new Date(2027, 7, 31, 12) }).length, 0);
+});
+
+test("filterConferences: near keeps events whose city centre is within km; a city with no centre never matches", () => {
+  const from = CITY_CENTRES["Salt Lake City"];
+  assert.deepEqual(slugs(filterConferences(data, { near: { from, km: 600 } })), [
+    "cloud-native-hackathon-slc-2026", "kubecon-na-2026", "aws-reinvent-2026", "google-cloud-next-2027", "black-hat-usa-2027",
+  ]); // Salt Lake City and Las Vegas
+  const within1000 = slugs(filterConferences(data, { near: { from, km: 1000 } }));
+  assert.ok(within1000.includes("scale-24x-2027") && within1000.includes("pycon-us-2027"), "the California events are within 1,000 km");
+  assert.ok(!within1000.includes("srecon27-americas"), "Seattle is about 1,126 km away");
+  assert.equal(filterConferences([{ slug: "x", name: "X", city: "Nowhere", startDate: "2027-01-01", topics: [] }], { near: { from, km: 1e6 } }).length, 0);
+});
+
+test("filterConferences: withTalks keeps only events with published talks, and the time filters combine with it", () => {
+  const talks = new Set(["kubecon-na-2026", "aws-reinvent-2026"]);
+  assert.deepEqual(slugs(filterConferences(data, { withTalks: talks })), ["kubecon-na-2026", "aws-reinvent-2026"]);
+  assert.deepEqual(filterConferences(data, { withTalks: new Set() }), []);
+  assert.equal(filterConferences(data, { withTalks: null }).length, 13);
+  assert.deepEqual(slugs(filterConferences(data, { withTalks: talks, upcoming: true, nextMonths: true, now: NOV_15 })), ["aws-reinvent-2026"]);
 });

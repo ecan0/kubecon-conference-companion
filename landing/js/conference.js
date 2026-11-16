@@ -2,8 +2,10 @@
    not-found state for a slug that is not in the catalogue. Plain ES module; js/qr.js draws the QR on its own and
    reads ?c= itself, so this file only keeps the canvas's slug and every link in step.
    With no ?c= the page offers the conference list: no event is assumed. */
-import { loadConferences, getConference, withConference, setConferenceQuery, VENUE_TBA } from './conferences.js';
+import { loadConferences, getConference, hasEnded, withConference, setConferenceQuery, registeredPanel, VENUE_TBA } from './conferences.js';
+import { showSavedTicket } from './saved-ticket.js';
 import { applyAppLinks, getConferenceTopics } from './companion-api.js';
+import { registeredHere } from './profile.js';
 
 const CHOOSER_TEXT = 'Choose a conference first.';
 const CONFERENCES_HREF = '/site/#conferences';
@@ -118,50 +120,118 @@ function fill(c) {
 
 /**
  * The talks panel. GET /api/catalog/topics?conference=<slug> is the only public read that says whether an event
- * has published talks (it lists the tags of those talks), so an empty answer is the "not published yet" state.
- * A route that cannot answer (no ?c=, the preview server, the API down) leaves the panel hidden: no guess.
+ * has published talks (it lists the tags of those talks), so an empty answer is the "not published yet" state:
+ * registration is closed for the event, and the register block gives way to one notice.
+ * A route that cannot answer (no ?c=, the preview server, the API down) leaves the page as it is: no guess.
+ * An event that has ended says so first, whether or not it published talks: registration is closed for good.
  */
 async function fillTalks(c) {
   const section = document.querySelector('[data-talk-section]');
   const body = section ? section.querySelector('[data-talks-body]') : null;
-  if (!body) return;
   const found = await getConferenceTopics(c.slug);
-  if (!found) return;
-  const nodes = [];
-  if (found.topics.length) {
-    const lead = document.createElement('p');
-    lead.className = 't-lead';
-    lead.textContent = `The talks published for ${c.name} cover these topics.`;
-    const list = document.createElement('ul');
-    list.className = 'cc-chips';
-    for (const topic of found.topics.slice(0, TALK_TOPIC_LIMIT)) {
-      const li = document.createElement('li');
-      li.textContent = topic;
-      list.append(li);
-    }
-    const row = document.createElement('p');
-    const search = document.createElement('a');
-    search.className = 'btn btn--primary';
-    search.setAttribute('data-app-link', withConference('/search', c.slug));
-    search.textContent = 'Search the talks';
-    row.append(search);
-    nodes.push(lead, list, row);
-  } else {
-    const notice = document.createElement('p');
-    notice.setAttribute('role', 'status');
-    notice.append(`Talks for ${c.name} have not been published yet.`);
-    if (c.url) {
-      const site = document.createElement('a');
-      site.href = c.url;
-      site.rel = 'noopener';
-      site.textContent = 'Open the official event site';
-      notice.append(' ', site, '.');
-    }
-    nodes.push(notice);
+  const published = Boolean(found && found.topics.length);
+  /* Already registered in this browser: the next steps replace the register block, whatever the event's state. */
+  if (registeredHere(c.slug)) { showRegistered(c); return; }
+  /* Ended wins over not-published: an event can be both (it ran and never published talks), and then it has ended. */
+  if (hasEnded(c)) { showEnded(c, { talks: published }); return; }
+  if (!body || !found) return;
+  if (!found.topics.length) { showNotPublished(c); return; }
+  const lead = document.createElement('p');
+  lead.className = 't-lead';
+  lead.textContent = `The talks published for ${c.name} cover these topics.`;
+  const list = document.createElement('ul');
+  list.className = 'cc-chips';
+  for (const topic of found.topics.slice(0, TALK_TOPIC_LIMIT)) {
+    const li = document.createElement('li');
+    li.textContent = topic;
+    list.append(li);
   }
-  body.replaceChildren(...nodes);
+  const row = document.createElement('p');
+  const search = document.createElement('a');
+  search.className = 'btn btn--primary';
+  search.setAttribute('data-app-link', withConference('/search', c.slug));
+  search.textContent = 'Search the talks';
+  row.append(search);
+  body.replaceChildren(lead, list, row);
   section.hidden = false;
   applyAppLinks(section).catch(() => {});
+}
+
+/**
+ * The register button and its QR go. `hidden` is enough on its own: assets/system.css makes it win over the layout's
+ * own `display` ([hidden] { display: none !important }), so no inline style is needed.
+ */
+function hideRegisterBlocks() {
+  $$('[data-found]').forEach((el) => { el.hidden = true; });
+}
+
+/**
+ * No published talks: POST /api/register answers 409 schedule_not_published for this event, so the register button
+ * and its QR go, and the one notice says when registration opens. The (empty) talks panel stays hidden: one notice,
+ * never two, and never a placeholder talk.
+ */
+function showNotPublished(c) {
+  hideRegisterBlocks();
+  const gate = document.querySelector('[data-reg-gate]');
+  if (!gate) return;
+  const site = document.createElement('a');
+  if (c.url) {
+    site.href = c.url;
+    site.rel = 'noopener';
+    site.textContent = 'Open the official event site';
+  } else {
+    site.href = CONFERENCES_HREF;
+    site.textContent = 'Open the conference list';
+  }
+  gate.hidden = false;
+  gate.replaceChildren(`Registration opens when ${c.name} publishes its talks. `, site, '.');
+}
+
+/**
+ * The event has ended: registration is closed for good, so the register block gives way to one notice. The talks stay
+ * readable and the official site stays one link away. The heading drops its verb: nothing is being registered for.
+ */
+function showEnded(c, { talks = false } = {}) {
+  hideRegisterBlocks();
+  $$('[data-c-verb]').forEach((el) => { el.hidden = true; });
+  const gate = document.querySelector('[data-reg-gate]');
+  if (!gate) return;
+  const links = [];
+  if (talks) {
+    const browse = document.createElement('a');
+    browse.href = `/search?c=${encodeURIComponent(c.slug)}`;
+    browse.textContent = 'Browse the talks';
+    links.push(browse);
+  }
+  const site = document.createElement('a');
+  if (c.url) {
+    site.href = c.url;
+    site.rel = 'noopener';
+    site.textContent = 'Open the official event site';
+  } else {
+    site.href = CONFERENCES_HREF;
+    site.textContent = 'Open the conference list';
+  }
+  links.push(site);
+  gate.hidden = false;
+  const sentence = document.createElement('p');
+  sentence.textContent = `${c.name} has ended, so registration is closed.`;
+  const row = document.createElement('div');
+  row.className = 'btn-row';
+  row.append(...links.map((a) => { a.className = a === links[0] && talks ? 'btn btn--primary' : 'btn btn--secondary'; return a; }));
+  gate.replaceChildren(sentence, row);
+}
+
+/** Registered here before: the visitor's ticket and the next steps replace the sign-up pitch. */
+function showRegistered(c) {
+  hideRegisterBlocks();
+  $$('[data-c-verb]').forEach((el) => { el.textContent = "You're registered for"; });
+  const gate = document.querySelector('[data-reg-gate]');
+  if (gate) { gate.hidden = false; gate.replaceChildren(...registeredPanel(c.slug)); }
+  const pitch = $$('[data-pitch]');
+  pitch.forEach((el) => { el.hidden = true; });
+  const ticket = document.querySelector('[data-ticket]');
+  if (ticket) showSavedTicket(ticket).then((shown) => { if (!shown) pitch.forEach((el) => { el.hidden = false; }); });
 }
 
 async function init() {

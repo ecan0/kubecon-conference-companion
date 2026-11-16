@@ -14,7 +14,7 @@ const status = { status: "ok", generatedAt: new Date().toISOString(), windowSeco
   errorRate: { requests: 20, serverErrors: 0, ratio: 0 } };
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.setItem("cc.token", "synthetic-mobile-session"));
+  await page.addInitScript(() => localStorage.setItem("cc.token", "synthetic-mobile-session"));
   await page.route("**/otlp/**", (route) => route.fulfill({ json: {} }));
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;

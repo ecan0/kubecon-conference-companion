@@ -5,9 +5,10 @@ import type { AccessTokenResponse, ScheduleResponse } from "@cc/shared";
 import { api, ApiError, getToken } from "../api.js";
 import { Alternatives } from "../components/Alternatives.js";
 import { talkHref } from "../talksApi.js";
+import { withConference } from "../conferenceLink.js";
 import { SkippedTalks } from "../components/SkippedTalks.js";
 import { recallSkipped, rememberSkipped } from "../skippedTalks.js";
-import { NoConferenceState, UnpublishedTalksState, conferenceSlug, useConferenceEntry, useTalkAvailability } from "../components/PageState.js";
+import { EndedConferenceState, NoConferenceState, UnpublishedTalksState, conferenceSlug, hasEnded, useConferenceEntry, useTalkAvailability } from "../components/PageState.js";
 import "./discovery.css";
 import { RoomActivityBadge, useRoomActivity } from "./RoomActivity.js";
 
@@ -18,6 +19,8 @@ export function Schedule() {
   const conferenceEntry = useConferenceEntry(conference);
   const talksAvailability = useTalkAvailability(conference);
   const unpublished = talksAvailability === "unpublished";
+  // Ended wins over unpublished: a visitor must not be asked to register for a past event.
+  const ended = hasEnded(conferenceEntry);
   const [schedule, setSchedule] = useState<(ScheduleResponse & { offlineSavedAt?: string }) | null>(null);
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
@@ -81,7 +84,7 @@ export function Schedule() {
         setSchedule(null);
         setAccess(null);
       }
-      else setError("Your schedule could not be loaded. Please reload or register again if your session expired.");
+      else setError(`Your schedule could not be loaded (${err instanceof ApiError ? `HTTP ${err.status}` : "no response from the server"}). Please reload to try again.`);
     });
     return () => { active = false; window.clearTimeout(timer); };
   }, [needsRegistration, conference, online, retry]);
@@ -118,11 +121,12 @@ export function Schedule() {
     {!online && <p role="status">QR needs a connection. Reconnect to create a fresh check-in code.</p>}
     <p>All session times use your device’s local time zone.</p>
     <p>Room activity reflects recent check-ins, not a headcount.</p>
-    {unpublished && <UnpublishedTalksState conference={conferenceEntry} />}
-    {needsRegistration && !unpublished && <p role="status">Register to build your personal schedule. <a href={`/site/register.html${search}`}>Register now</a>.</p>}
+    {unpublished && !ended && <UnpublishedTalksState conference={conferenceEntry} />}
+    {needsRegistration && ended && conferenceEntry && <EndedConferenceState conference={conferenceEntry} talks={talksAvailability} search={search} />}
+    {needsRegistration && !ended && !unpublished && <p role="status">Register to build your personal schedule. <a href={withConference("/site/register.html", search)}>Register now</a>.</p>}
     {error && <p role="alert">{error}</p>}
     {!schedule && !error && !needsRegistration && !unpublished && <p role="status">Loading your schedule…</p>}
-    {schedule && schedule.items.length === 0 && !unpublished && <p>No talks scheduled yet. <Link to={`/onboarding${search}`}>Find your talks</Link>.</p>}
+    {schedule && schedule.items.length === 0 && !unpublished && <p>No talks scheduled yet. <Link to={withConference("/onboarding", search)}>Find your talks</Link>.</p>}
     {schedule && schedule.items.length > 0 && <button type="button" disabled={calendarPending} onClick={() => void exportCalendar()}>
       {calendarPending ? "Preparing calendar…" : "Add to calendar"}
     </button>}
@@ -134,7 +138,7 @@ export function Schedule() {
       <li key={talk.id}>
         <p><time dateTime={talk.start}>{new Date(talk.start).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</time>
           {" – "}<time dateTime={talk.end}>{new Date(talk.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
-        <h2><Link to={talkHref(talk.id)}>{talk.title}</Link></h2><p>{talk.room} · {talk.speaker}</p>
+        <h2><Link to={withConference(talkHref(talk.id), search)}>{talk.title}</Link></h2><p>{talk.room} · {talk.speaker}</p>
         <p><RoomActivityBadge room={talk.room} activity={activity} /></p>
         {reason && <p><strong>Why recommended:</strong> {reason}</p>}
         <button type="button" disabled={calendarPending} aria-label={`Add ${talk.title} to calendar`}

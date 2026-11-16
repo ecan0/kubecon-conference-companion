@@ -6,7 +6,8 @@ import type { MeResponse, RegisterResponse } from "@cc/shared";
 import { createTokenService } from "../src/auth/token.js";
 import type { Db } from "../src/db/client.js";
 import { LocalHashEmbedder } from "../src/embed/hash.js";
-import { testDb } from "./pg.js";
+import { TEST_CONFERENCE, insertTalks, testDb } from "./pg.js";
+import { talk } from "./helpers.js";
 import { registerRoutes, registerBodySchema } from "../src/routes/register.js";
 import { registerSearchRoutes } from "../src/routes/search.js";
 import { NO_EXPIRY } from "../src/retentionPolicy.js";
@@ -37,6 +38,7 @@ const validBody = {
   email: "ada@example.com",
   interests: ["Kubernetes", "opentelemetry", "kubernetes"],
   consent: { clusterMap: true, qrCheckin: false },
+  conference: TEST_CONFERENCE,
 };
 
 const exporter = new InMemorySpanExporter();
@@ -65,6 +67,8 @@ describe("POST /api/register and GET /api/me", () => {
     t = Date.parse("2026-11-09T12:00:00Z");
     exporter.reset();
     db = await testDb();
+    // Registration is gated on the conference having published talks (TEST_CONFERENCE).
+    await insertTalks(db, [{ ...talk("t1", 9, 10), level: "beginner" }]);
     app = Fastify({ logger: false });
     await app.register(registerRoutes, {
       db,
@@ -112,6 +116,43 @@ describe("POST /api/register and GET /api/me", () => {
       consent: { clusterMap: true, qrCheckin: false },
       onboarded: false,
     });
+  });
+
+  it("requires a conference with published talks: 400 without one, 409 when it has none, 201 when it has some", async () => {
+    const missing = await register({ ...validBody, conference: undefined });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json()).toEqual({ error: "conference_required" });
+
+    const noTalks = await register({ ...validBody, conference: "no-such-talks" });
+    expect(noTalks.statusCode).toBe(409);
+    expect(noTalks.json()).toEqual({ error: "schedule_not_published" });
+
+    // Neither rejection wrote anything.
+    for (const table of ["attendees", "entitlements", "identities"]) expect(await count(db, table)).toBe(0);
+
+    expect((await register(validBody)).statusCode).toBe(201);
+  });
+
+  it("answers 409 event_ended when every talk of the conference has ended, wiring nothing", async () => {
+    await insertTalks(db, [{ ...talk("gone", 9, 10), start: "2026-11-09T09:00:00.000Z", end: "2026-11-09T10:00:00.000Z" }], "ended-conf");
+    const ended = await register({ ...validBody, conference: "ended-conf" });
+    expect(ended.statusCode).toBe(409);
+    // Ended wins over not-published: the conference does have talks, they are simply over.
+    expect(ended.json()).toEqual({ error: "event_ended" });
+    for (const table of ["attendees", "entitlements", "identities"]) expect(await count(db, table)).toBe(0);
+  });
+
+  it("keeps registration open while one talk has not ended: the last end decides", async () => {
+    // Last talk ends exactly at the injected clock: not ended yet.
+    await insertTalks(db, [{ ...talk("till-now", 9, 10), start: "2026-11-09T11:00:00.000Z", end: "2026-11-09T12:00:00.000Z" }], "till-now-conf");
+    expect((await register({ ...validBody, conference: "till-now-conf" })).statusCode).toBe(201);
+
+    // Past talks plus one upcoming talk: max(end_at) is in the future, so the event is still open.
+    await insertTalks(db, [
+      { ...talk("over", 9, 10), start: "2026-11-08T09:00:00.000Z", end: "2026-11-08T10:00:00.000Z" },
+      { ...talk("next", 9, 10), start: "2026-11-12T09:00:00.000Z", end: "2026-11-12T10:00:00.000Z" },
+    ], "mixed-conf");
+    expect((await register({ ...validBody, conference: "mixed-conf" })).statusCode).toBe(201);
   });
 
   it("consumes a valid identity claim by creating one identity row for the registered attendee", async () => {
@@ -304,7 +345,7 @@ describe("POST /api/register and GET /api/me", () => {
     await app2.register(registerRoutes, { db: failing(db, () => true), tokens: createTokenService({ key: KEY, now }), embed });
     const res = await app2.inject({ method: "POST", url: "/api/register", payload: validBody });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({ error: "storage_unavailable", message: "could not store registration" });
+    expect(res.json()).toEqual({ error: "storage_unavailable", message: "could not check the conference schedule" });
     expect(res.body).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|insert into|boom/);
     await app2.close();
   });
@@ -402,6 +443,32 @@ describe("POST /api/register and GET /api/me", () => {
     expect(JSON.stringify(spans[0]!.attributes)).not.toContain(reg.attendeeId);
     expect(JSON.stringify(spans[0]!.events)).not.toContain(reg.attendeeId);
   });
+
+  it("attaches a new account's claim to the signed-in attendee; an account already linked elsewhere is refused", async () => {
+    const first = (await register()).json<RegisterResponse>();
+    const claim = (await claimFor("github-link-1")).token;
+    const link = (token: string, identityClaim: string) => app.inject({ method: "POST", url: "/api/me/identity", headers: { authorization: `Bearer ${token}` }, payload: { identityClaim } });
+    expect((await link(first.token, claim)).statusCode).toBe(204);
+    expect((await db.query<{ attendee_id: string }>("select attendee_id from identities where id = 'github-link-1'")).rows[0]!.attendee_id).toBe(first.attendeeId);
+    const second = (await register({ ...validBody, name: "Second" })).json<RegisterResponse>();
+    const again = await link(second.token, claim);
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ error: "identity_linked" });
+    expect((await db.query<{ attendee_id: string }>("select attendee_id from identities where id = 'github-link-1'")).rows[0]!.attendee_id).toBe(first.attendeeId);
+    const repeat = await link(first.token, claim);
+    expect(repeat.statusCode).toBe(204);
+  });
+
+  it("refuses to link without a session or with an invalid claim, and writes nothing", async () => {
+    const reg = (await register()).json<RegisterResponse>();
+    const claim = (await claimFor("github-link-2")).token;
+    const anonymous = await app.inject({ method: "POST", url: "/api/me/identity", payload: { identityClaim: claim } });
+    expect(anonymous.statusCode).toBe(401);
+    const invalid = await app.inject({ method: "POST", url: "/api/me/identity", headers: { authorization: `Bearer ${reg.token}` }, payload: { identityClaim: "invalid.claim" } });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ error: "invalid_identity_claim" });
+    expect(await count(db, "identities")).toBe(0);
+  });
 });
 
 describe("register body validation", () => {
@@ -410,7 +477,7 @@ describe("register body validation", () => {
   it("accepts a valid body and drops unknown fields", () => {
     const r = registerBodySchema.safeParse({ ...validBody, religion: "x", health: "y" });
     expect(r.success).toBe(true);
-    expect(Object.keys(r.data!).sort()).toEqual(["consent", "email", "interests", "name"]);
+    expect(Object.keys(r.data!).sort()).toEqual(["conference", "consent", "email", "interests", "name"]);
   });
 
   it("accepts a body without email", () => {
@@ -429,6 +496,9 @@ describe("register body validation", () => {
     rejects({ ...validBody, interests: Array.from({ length: 21 }, (_, i) => `t${i}`) });
     rejects({ ...validBody, interests: [42] });
     rejects({ ...validBody, consent: { clusterMap: "yes", qrCheckin: true } });
+    rejects({ ...validBody, conference: undefined });
+    rejects({ ...validBody, conference: "Bad Slug" });
+    rejects({ ...validBody, conference: "" });
   });
 
   it("returns 400 over HTTP without echoing values", async () => {

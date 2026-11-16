@@ -47,19 +47,74 @@ async function initFinder() {
   const out = $('[data-conference-results]');
   if (!form || !out) return;
   const q = $('[data-find-q]', form), topicSel = $('[data-find-topic]', form), count = $('[data-find-count]', form);
+  const filterBox = $('[data-find-filters]', form), kmBox = $('[data-find-km]', form), kmSel = $('[data-find-km-select]', form), hint = $('[data-find-hint]', form);
   form.addEventListener('submit', (e) => e.preventDefault());
   const list = await listAll();
   if (!list) return;                                    // the first-paint list stays
   const m = await conferences();
   const topics = [...new Set(list.flatMap((c) => c.topics || []))].sort((a, b) => a.localeCompare(b));
   topicSel.innerHTML = '<option value="">All topics</option>' + topics.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
-  const card = (c) => `<li${c.assumed ? ' data-assumed' : ''}><a class="card find-card"${c.assumed ? ' data-assumed' : ''}${c.assumed ? '' : ' data-real'} href="conference.html?c=${encodeURIComponent(c.slug)}"><span class="find-card__name">${esc(c.name)}</span><span class="find-card__meta">${esc(c.city)} · ${esc(c.venue)}</span><span class="find-card__date">${esc(formatDates(c))}</span></a></li>`;
+  filterBox.hidden = false;                             // the toggles need this script: without it they stay hidden
+  const active = { upcoming: true, nextMonths: false, near: false, talks: false };
+  let origin = null;                                    // the visitor's position, once the browser gives it
+  let talkSlugs = null;                                 // the events the API reports talks for, once asked
+  const say = (text) => { hint.textContent = text; hint.hidden = !text; };
+  const card = (c) => {
+    /* an event that is over keeps its card (its talks and its page stay open) and says so */
+    const ended = typeof m.hasEnded === 'function' && m.hasEnded(c) ? ' <span class="find__ended">Ended</span>' : '';
+    const centre = active.near && origin && typeof m.centreOf === 'function' ? m.centreOf(c) : null;
+    const away = centre ? ` · ${Math.round(m.distanceKm(origin, centre)).toLocaleString('en-US')} km away` : '';
+    return `<li${c.assumed ? ' data-assumed' : ''}><a class="card find-card"${c.assumed ? ' data-assumed' : ''}${c.assumed ? '' : ' data-real'} href="conference.html?c=${encodeURIComponent(c.slug)}"><span class="find-card__name">${esc(c.name)}</span><span class="find-card__meta">${esc(c.city)} · ${esc(c.venue)}${esc(away)}</span><span class="find-card__date">${esc(formatDates(c))}${ended}</span></a></li>`;
+  };
   const render = () => {
-    const opts = { q: q.value.trim(), topic: topicSel.value };
-    const hits = typeof m.filterConferences === 'function' ? m.filterConferences(list, opts) : list;
-    out.innerHTML = hits.length ? hits.map(card).join('') : '<li class="find__empty"><strong>No conference matches.</strong> Clear the search or pick another topic.</li>';
+    const hits = typeof m.filterConferences === 'function'
+      ? m.filterConferences(list, {
+        q: q.value.trim(),
+        topic: topicSel.value,
+        upcoming: active.upcoming,
+        nextMonths: active.nextMonths,
+        near: active.near && origin ? { from: origin, km: Number(kmSel.value) } : null,
+        withTalks: active.talks ? (talkSlugs ?? new Set()) : null,
+      })
+      : list;
+    out.innerHTML = hits.length ? hits.map(card).join('') : '<li class="find__empty"><strong>No conference matches.</strong> Clear the search or a filter to see more.</li>';
     count.textContent = hits.length === 1 ? '1 conference' : `${hits.length} conferences`;
   };
+  const locate = () => new Promise((done) => {
+    if (!navigator.geolocation) return done(false);
+    navigator.geolocation.getCurrentPosition(
+      (p) => { origin = { lat: p.coords.latitude, lng: p.coords.longitude }; done(true); },
+      () => done(false),
+      { maximumAge: 600000, timeout: 10000 },
+    );
+  });
+  const publishedSlugs = async () => {
+    try {
+      const api = await import('./companion-api.js');
+      const answers = await Promise.all(list.map(async (c) => [c.slug, await api.getConferenceTopics(c.slug)]));
+      if (answers.every(([, r]) => r === null)) return null;   // cannot tell (API down): never claim "no talks"
+      return new Set(answers.filter(([, r]) => r && r.topics.length > 0).map(([slug]) => slug));
+    } catch (e) { return null; }
+  };
+  $$('[data-find-toggle]', form).forEach((btn) => btn.addEventListener('click', async () => {
+    const key = btn.dataset.findToggle;
+    const turnOn = btn.getAttribute('aria-pressed') !== 'true';
+    if (turnOn && key === 'near' && !origin) {
+      say('Checking your location…');
+      if (!(await locate())) return say('Location is off, so distance cannot be used. Allow location for this site and try again.');
+    }
+    if (turnOn && key === 'talks' && talkSlugs === null) {
+      say('Checking which events have talks…');
+      talkSlugs = await publishedSlugs();
+      if (talkSlugs === null) return say('Talk status is unavailable right now, so this filter stays off.');
+    }
+    say('');
+    active[key] = turnOn;
+    btn.setAttribute('aria-pressed', String(turnOn));
+    kmBox.hidden = !active.near;
+    render();
+  }));
+  kmSel.addEventListener('change', render);
   q.addEventListener('input', render);
   topicSel.addEventListener('change', render);
   render();
@@ -83,7 +138,13 @@ async function initNextEvent() {
     import('./qr.js').then((q) => q.renderAll(box)).catch(() => {});
   }
   const cta = $('[data-next-register]');
-  if (cta) cta.href = `register.html?c=${encodeURIComponent(c.slug)}`;
+  if (cta) {
+    // Signed in with a registration in this browser: the button opens that registration instead.
+    const current = (await import('./companion-api.js')).currentRegistrationSlug();
+    cta.href = current ? `conference.html?c=${encodeURIComponent(current)}` : `register.html?c=${encodeURIComponent(c.slug)}`;
+    const label = $('[data-next-register-label]', cta);
+    if (label) label.textContent = current ? 'View current registration' : 'Register for a conference';
+  }
 }
 
 /* ---------------------------------------------------------------- conference page and register page: facts from ?c= */

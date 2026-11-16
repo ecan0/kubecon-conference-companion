@@ -25,6 +25,15 @@ it("compares both methods and displays the server query", async () => {
   expect(screen.getAllByText(/match_all/)).toHaveLength(2);
 });
 
+it("links each result to its talk with the conference in the address", async () => {
+  vi.spyOn(api, "search").mockImplementation(async (q, mode) => ({ q, mode, tookMs: 1, hits: [{ talk, score: 1 }] }));
+  render(<MemoryRouter initialEntries={["/search?c=kubecon-na-2026"]}><Search /></MemoryRouter>);
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  const links = await screen.findAllByRole("link", { name: "Secure Kubernetes" });
+  expect(links).toHaveLength(2);
+  for (const link of links) expect(link.getAttribute("href")).toBe("/talks/talk?c=kubecon-na-2026");
+});
+
 it("retains successful results when the other method fails", async () => {
   vi.spyOn(api, "search").mockImplementation(async (q, mode) => {
     if (mode === "keyword") throw new Error("offline");

@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { App, siteNavigation } from "../src/App.js";
+import { signOut } from "../src/api.js";
 
 const renderAt = (path: string) => render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
 // The site header also asks /api/auth/providers for its sign-in button; only the callback gets the scripted answer.
@@ -14,6 +15,7 @@ const authCalls = (m: ReturnType<typeof reply>) => m.mock.calls.filter((c) => is
 
 let sessionData: Map<string, string>;
 beforeEach(() => {
+  signOut(); // the module keeps the live token in memory: a test must not inherit the previous one's session
   // A Map-backed stand-in: the runtime's own localStorage global is not reliable under jsdom here.
   const data = new Map<string, string>();
   sessionData = new Map();
@@ -80,7 +82,8 @@ describe("/auth/:provider/callback", () => {
     const replace = vi.spyOn(siteNavigation, "replace").mockImplementation(() => {});
     renderAt("/auth/github/callback?code=abc&state=session");
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/schedule"));
-    expect(sessionStorage.getItem("cc.token")).toBe("attendee-session");
+    expect(localStorage.getItem("cc.token")).toBe("attendee-session");
+    expect(localStorage.getItem("cc.token.expiresAt")).toBe("2026-11-11T20:00:00.000Z");
   });
 
   it("posts the one-time state only once under StrictMode", async () => {
@@ -115,5 +118,39 @@ describe("/auth/:provider/callback", () => {
     expect(replace).not.toHaveBeenCalled();
     expect(localStorage.getItem("cc.linked.v1")).toBeNull();
     if (status === null) expect(authCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it("links a new account to the chat session in this browser, not a second registration", async () => {
+    localStorage.setItem("cc.token", "chat-token");
+    localStorage.setItem("cc.token.expiresAt", "2999-01-01T00:00:00.000Z");
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (isCallback(url)) return new Response(JSON.stringify({ provider: "github", displayName: "Grace", handle: "g", avatarUrl: "", return: "/schedule?c=aws-reinvent-2026", app: false, claim: { token: "claim.jwt", expiresAt: "2999-01-01T00:00:00.000Z" } }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url === "/api/me/identity") return new Response(null, { status: 204 });
+      return new Response("{}", { status: 503 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const replace = vi.spyOn(siteNavigation, "replace").mockImplementation(() => {});
+    renderAt("/auth/github/callback?code=abc&state=xyz");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/schedule?c=aws-reinvent-2026"));
+    const link = fetchMock.mock.calls.find((c) => c[0] === "/api/me/identity");
+    expect(link).toBeTruthy();
+    expect((link![1] as RequestInit).headers).toMatchObject({ authorization: "Bearer chat-token" });
+    expect(JSON.parse((link![1] as RequestInit).body as string)).toEqual({ identityClaim: "claim.jwt" });
+    expect(localStorage.getItem("cc.token.via")).toBe("github");
+    expect(localStorage.getItem("cc.token")).toBe("chat-token");
+    expect(sessionStorage.getItem("cc.identity-claim")).toBeNull();
+  });
+
+  it("says so when the account already has a profile (409), instead of registering it again", async () => {
+    localStorage.setItem("cc.token", "chat-token");
+    localStorage.setItem("cc.token.expiresAt", "2999-01-01T00:00:00.000Z");
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (isCallback(url)) return new Response(JSON.stringify({ provider: "github", displayName: "Grace", handle: "g", avatarUrl: "", return: "/schedule", app: false, claim: { token: "claim.jwt", expiresAt: "2999-01-01T00:00:00.000Z" } }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ error: "identity_linked" }), { status: 409, headers: { "content-type": "application/json" } });
+    }));
+    const replace = vi.spyOn(siteNavigation, "replace").mockImplementation(() => {});
+    renderAt("/auth/github/callback?code=abc&state=xyz");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/already has a profile/);
+    expect(replace).not.toHaveBeenCalled();
   });
 });

@@ -37,6 +37,15 @@
 }
 .btn-github:hover { background: #e5e5e5; border-color: #e5e5e5; color: #000000; }
 .btn-github svg { flex: none; }
+
+/* Sign out: the neutral outline counterpart of the GitHub button, same size and place */
+.btn-signout {
+  order: 2; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; padding: 0 var(--s-4);
+  background: #ffffff; color: #000000; border: 1px solid rgb(0 0 0 / 0.2); border-radius: 4px;
+  font: 500 15px/1 var(--font-text); white-space: nowrap; cursor: pointer;
+  transition: background-color 150ms var(--ease);
+}
+.btn-signout:hover { background: #e5e5e5; border-color: rgb(0 0 0 / 0.35); }
 @media (prefers-color-scheme: light) {
   .btn-github { background: #000000; color: #ffffff; border-color: #000000; }
   .btn-github:hover { background: #24292f; border-color: #24292f; color: #ffffff; }

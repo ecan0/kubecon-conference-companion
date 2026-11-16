@@ -128,10 +128,10 @@ test("scripted flow end to end over HTTP yields a valid profile", async () => {
       role: "platform engineer",
       interests: ["kubernetes", "observability", "ai sre"],
       goal: "learn, meet",
-      formats: "",
+      formats: "none",
     });
     assert.match(messages[0].content, /signed in with GitHub/);
-    assert.match(messages[0].content, /Signing up gets you a QR ticket for the room doors/);
+    assert.match(messages[0].content, /A few quick questions and you'll have a QR ticket for the room doors/);
   } finally { await a.close(); }
 });
 

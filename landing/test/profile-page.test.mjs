@@ -183,11 +183,20 @@ test("authBase validation: http(s) only, bare origin", () => {
   for (const bad of ["javascript:alert(1)", "ftp://x.org", "//x.org", "auth.example.org", "", null, undefined, "data:text/html,x"]) assert.equal(normalizeAuthBase(bad), "", String(bad));
 });
 
-import { deletionPlan, LOCAL_DATA_KEYS, SESSION_DATA_KEYS, SESSION_DATA_PREFIXES } from "../js/profile.js";
+import { deletionPlan, LOCAL_DATA_KEYS, SESSION_DATA_KEYS, SESSION_DATA_PREFIXES, registeredHere } from "../js/profile.js";
+
+test("registeredHere: a real registration for the slug counts; demo samples, other slugs and junk do not", () => {
+  const rows = JSON.stringify([{ slug: "aws-reinvent-2026", registeredAt: "t" }, { slug: "kubecon-na-2026", sample: true }]);
+  assert.equal(registeredHere("aws-reinvent-2026", rows), true);
+  assert.equal(registeredHere("kubecon-na-2026", rows), false);
+  assert.equal(registeredHere("pycon-us-2027", rows), false);
+  assert.equal(registeredHere("aws-reinvent-2026", "not json"), false);
+  assert.equal(registeredHere("", rows), false);
+});
 
 test("delete my data: which keys are cleared", () => {
-  assert.deepEqual([...LOCAL_DATA_KEYS].sort(), ["cc.avatar.v1", "cc.invite-shares.v1", "cc.kept-profile.v1", "cc.linked.v1", "cc.registrations.v1"]);
-  assert.ok(SESSION_DATA_KEYS.includes("cc.token"));
+  assert.deepEqual([...LOCAL_DATA_KEYS].sort(), ["cc.avatar.v1", "cc.invite-shares.v1", "cc.kept-profile.v1", "cc.linked.v1", "cc.registrations.v1", "cc.token", "cc.token.expiresAt"]);
+  assert.ok(!SESSION_DATA_KEYS.includes("cc.token"), "the attendee token is shared by every tab, so it is a local key");
   assert.deepEqual(SESSION_DATA_PREFIXES, ["cc.chat.v1."]);
 });
 

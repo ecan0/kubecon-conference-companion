@@ -130,14 +130,13 @@ test("scripted flow: happy path produces a valid, validator-approved profile wit
   });
   assert.equal(validateProfile(t.profile).ok, true);
   const bots = messages.filter((m) => m.role === "assistant").map((m) => m.content);
-  // what registering does is said once, in three short lines in the opening message, before the first question
-  assert.equal(bots[0], `${REGISTER_NOTICE}
-What should I call you?`);
-  assert.equal(REGISTER_NOTICE.split("\n").length, 3);
+  // what registering does is said once, in two short lines in the opening message, then a blank line and the first question
+  assert.equal(bots[0], `${REGISTER_NOTICE}\n\nWhat should I call you?`);
+  assert.equal(REGISTER_NOTICE.split("\n\n").length, 2);
   assert.match(REGISTER_NOTICE, /QR ticket for the room doors/);
-  assert.match(REGISTER_NOTICE, /until you delete them from your profile/);
-  assert.match(REGISTER_NOTICE, /only see totals.*groups under 5/);
-  assert.equal(bots.filter((m) => /Signing up gets/.test(m)).length, 1);
+  assert.match(REGISTER_NOTICE, /delete them anytime from your profile/);
+  assert.match(REGISTER_NOTICE, /organisers only ever see totals/);
+  assert.equal(bots.filter((m) => /A few quick questions/.test(m)).length, 1);
   // no consent questions and no deletion statements anywhere
   for (const [i, m] of bots.entries()) {
     assert.ok(!/24 hours|deleted|consent|may I include|Yes or no|would you like to use QR/i.test(m), m);
@@ -183,7 +182,7 @@ test("scripted flow never asks about sensitive topics", () => {
 test("summary read-back is one item per line, and the server keeps those line breaks", async () => {
   const { tidyReplyForTest } = await import("../server.mjs").then((m) => ({ tidyReplyForTest: m.tidyReply }));
   const { t } = converse(["Grace", "sre", "tracing, kubernetes", "build", "workshops"].slice(0, 5));
-  assert.equal(t.reply.split("\n").length, 7);
-  assert.match(t.reply, /\nName: Grace\nRole: sre\nTopics: tracing, kubernetes\nGoal: build\nFormats: workshops\nShall I sign you up with these\?$/);
-  assert.equal(tidyReplyForTest("Here is what I have:\n**Name:** Ada\n\n  Role:   eng \n- Topics: a, b\nRegister you with these?"), "Here is what I have:\nName: Ada\nRole: eng\nTopics: a, b\nRegister you with these?");
+  assert.equal(t.reply.split("\n").length, 9); // heading, blank, five items, blank, question
+  assert.match(t.reply, /\n\nName: Grace\nRole: sre\nTopics: tracing, kubernetes\nGoal: build\nFormats: workshops\n\nShall I sign you up with these\?$/);
+  assert.equal(tidyReplyForTest("Here is what I have:\n**Name:** Ada\n\n  Role:   eng \n- Topics: a, b\nRegister you with these?"), "Here is what I have:\nName: Ada\n\nRole: eng\nTopics: a, b\nRegister you with these?");
 });

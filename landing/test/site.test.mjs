@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isSite, apiUrl, describeStatus, getLiveAggregates, getConfig, resetConfigCache, getStatus, signUp, completeSignup, storeToken, selectTalks,
-  toRegisterRequest, toOnboardingAnswers, fetchAccessToken, applyAppLinks, TOKEN_KEY, DEFAULT_EXPERIENCE,
+  toRegisterRequest, toOnboardingAnswers, fetchAccessToken, applyAppLinks, TOKEN_KEY, DEFAULT_EXPERIENCE, sessionToken,
   conferenceSlug, scopedApiUrl, getConferenceTopics,
 } from "../js/companion-api.js";
 import { registrationUrl } from "../js/qr.js";
@@ -15,12 +15,13 @@ function memoryStorage() {
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), map: m };
 }
 
-/** Runs fn as if the page were served under /site/ on the app's origin, with a fake fetch and sessionStorage. */
+/** Runs fn as if the page were served under /site/ on the app's origin, with a fake fetch, sessionStorage and localStorage. */
 async function onSite(handler, fn, { search = "" } = {}) {
-  const saved = { fetch: globalThis.fetch, location: globalThis.location, sessionStorage: globalThis.sessionStorage };
+  const saved = { fetch: globalThis.fetch, location: globalThis.location, sessionStorage: globalThis.sessionStorage, localStorage: globalThis.localStorage };
   const calls = [];
   globalThis.location = { pathname: "/site/register.html", origin: "http://app.test:5173", search };
   Object.defineProperty(globalThis, "sessionStorage", { value: memoryStorage(), configurable: true, writable: true });
+  Object.defineProperty(globalThis, "localStorage", { value: memoryStorage(), configurable: true, writable: true });
   globalThis.fetch = async (url, init = {}) => {
     const call = { url: String(url), method: init.method ?? "GET", headers: init.headers ?? {}, body: init.body ? JSON.parse(init.body) : undefined };
     calls.push(call);
@@ -31,6 +32,7 @@ async function onSite(handler, fn, { search = "" } = {}) {
     globalThis.fetch = saved.fetch;
     globalThis.location = saved.location;
     Object.defineProperty(globalThis, "sessionStorage", { value: saved.sessionStorage, configurable: true, writable: true });
+    Object.defineProperty(globalThis, "localStorage", { value: saved.localStorage, configurable: true, writable: true });
     if (saved.location === undefined) delete globalThis.location;
     resetConfigCache();
   }
@@ -80,6 +82,48 @@ test("on the site, config is derived in the browser (no /api/config), appBase is
   });
 });
 
+test("applyAppLinks: the page's ?c= travels with every app link, keeping its own query and hash", async () => {
+  await onSite(realApi(), async () => {
+    const plain = { dataset: { appLink: "/schedule" }, href: "" };
+    const withQuery = { dataset: { appLink: "/search?mode=hybrid#top" }, href: "" };
+    const carried = { dataset: { appLink: "/search?c=old-slug" }, href: "" };
+    await applyAppLinks({ querySelectorAll: () => [plain, withQuery, carried] });
+    assert.equal(plain.href, "/schedule?c=pycon-us-2027");
+    assert.equal(withQuery.href, "/search?mode=hybrid&c=pycon-us-2027#top");
+    assert.equal(carried.href, "/search?c=pycon-us-2027", "the page's own slug wins over a stale one on the attribute");
+  }, { search: "?c=pycon-us-2027" });
+  // a malformed ?c= is not copied onto a link (the API's slug shape, shared/src/contract.ts)
+  await onSite(realApi(), async () => {
+    const a = { dataset: { appLink: "/schedule" }, href: "" };
+    await applyAppLinks({ querySelectorAll: () => [a] });
+    assert.equal(a.href, "/schedule");
+  }, { search: "?c=not%20a%20slug" });
+});
+
+test("applyAppLinks: a page without ?c= carries the newest real registration, never a demo sample", async () => {
+  await onSite(realApi(), async () => {
+    localStorage.setItem("cc.registrations.v1", JSON.stringify([
+      { slug: "kubecon-na-2026", registeredAt: "2026-11-01T00:00:00Z" },
+      { slug: "aws-reinvent-2026", registeredAt: "2026-11-16T00:00:00Z" },
+      { slug: "pycon-us-2027", registeredAt: "2026-11-20T00:00:00Z", sample: true },
+    ]));
+    const a = { dataset: { appLink: "/schedule" }, href: "" };
+    await applyAppLinks({ querySelectorAll: () => [a] });
+    assert.equal(a.href, "/schedule?c=aws-reinvent-2026");
+  }, { search: "" });
+});
+
+test("sessionToken: a token is shared through localStorage until its expiry, then dropped", async () => {
+  await onSite(realApi(), async () => {
+    storeToken("live", "2999-01-01T00:00:00Z");
+    assert.equal(sessionToken(), "live");
+    assert.equal(localStorage.getItem("cc.token.expiresAt"), "2999-01-01T00:00:00Z");
+    storeToken("stale", "2000-01-01T00:00:00Z");
+    assert.equal(sessionToken(), null, "a token past its expiry is not sent");
+    assert.equal(localStorage.getItem(TOKEN_KEY), null);
+  });
+});
+
 test("getStatus reads the real /api/status on the site", async () => {
   await onSite((c) => (c.url === "/api/status" ? json({ status: "ok" }) : new Response("", { status: 404 })), async () => {
     assert.equal((await getStatus()).status, "ok");
@@ -107,13 +151,13 @@ test("selectTalks matches the Onboarding page: best score first, invalid times d
   assert.deepEqual(selectTalks(talks), ["b", "a"]);
 });
 
-test("signUp: register -> app token in sessionStorage 'cc.token' -> onboarding -> search -> schedule -> check-in token for the QR", async () => {
+test("signUp: register -> app token in localStorage 'cc.token' -> onboarding -> search -> schedule -> check-in token for the QR", async () => {
   await onSite(realApi(), async (calls) => {
     const t = await signUp({ slug: "cn-2026", name: "CN" }, validProfile(), { returning: true });
     assert.deepEqual(calls.map((c) => `${c.method} ${c.url.split("?")[0]}`), [
       "POST /api/register", "POST /api/onboarding", "GET /api/search", "POST /api/schedule", "POST /api/access/token",
     ]);
-    assert.equal(sessionStorage.getItem(TOKEN_KEY), "attendee.jwt");
+    assert.equal(localStorage.getItem(TOKEN_KEY), "attendee.jwt");
     assert.equal(calls[0].body.returning, true);
     assert.deepEqual(calls[0].body.consent, { clusterMap: true, qrCheckin: true });
     assert.equal(calls[0].headers.authorization, undefined); // register is unauthenticated
@@ -146,7 +190,7 @@ test("signUp: sends the temporary identity claim and treats a rejected claim as 
     assert.equal(calls[0].body.identityClaim, "claim.jwt");
     assert.deepEqual(result, { source: "error", error: "already_registered" });
     assert.equal(sessionStorage.getItem("cc.identity-claim"), null);
-    assert.equal(sessionStorage.getItem(TOKEN_KEY), null);
+    assert.equal(localStorage.getItem(TOKEN_KEY), null);
   });
 });
 
@@ -155,13 +199,30 @@ test("signUp: an expired or invalid claim and a validation failure are reported,
     sessionStorage.setItem("cc.identity-claim", JSON.stringify({ token: "stale.jwt", expiresAt: "2030-01-01T00:00:00Z" }));
     assert.deepEqual(await signUp({ slug: "cn-2026" }, validProfile()), { source: "error", error: "identity_claim_invalid" });
     assert.equal(sessionStorage.getItem("cc.identity-claim"), null);
-    assert.equal(sessionStorage.getItem(TOKEN_KEY), null);
+    assert.equal(localStorage.getItem(TOKEN_KEY), null);
   });
   await onSite(realApi({ "POST /api/register": () => json({ error: "invalid_request" }, 400) }), async () => {
     const result = await signUp({ slug: "cn-2026" }, validProfile());
     assert.deepEqual(result, { source: "error", error: "registration_failed" });
-    assert.equal(sessionStorage.getItem(TOKEN_KEY), null);
+    assert.equal(localStorage.getItem(TOKEN_KEY), null);
   });
+});
+
+test("signUp: a conference with no published talks is reported as schedule_not_published, not a sign-in problem", async () => {
+  await onSite(realApi({ "POST /api/register": () => json({ error: "schedule_not_published" }, 409) }), async (calls) => {
+    const result = await signUp({ slug: "cn-2026" }, validProfile());
+    assert.deepEqual(result, { source: "error", error: "schedule_not_published" });
+    assert.equal(calls[0].body.conference, "cn-2026", "the register body names the conference");
+    assert.equal(localStorage.getItem(TOKEN_KEY), null);
+  });
+});
+
+test("toRegisterRequest: the page's ?c= supplies the conference when the caller passes none", async () => {
+  await onSite(realApi(), async () => {
+    assert.equal(toRegisterRequest(validProfile()).conference, "cn-2026");
+    assert.equal(toRegisterRequest(validProfile(), { name: "no slug" }).conference, "cn-2026");
+  }, { search: "?c=cn-2026" });
+  assert.equal("conference" in toRegisterRequest(validProfile()), false, "no event chosen: nothing is invented");
 });
 
 test("signUp: storeToken resets the offline session when the token changes, like the React app", async () => {
@@ -181,7 +242,7 @@ test("signUp: a failing schedule or check-in token still leaves a registered tic
     assert.equal(t.source, "api");
     assert.equal(t.token, null);
     assert.equal(t.scheduleSaved, false);
-    assert.equal(sessionStorage.getItem(TOKEN_KEY), "attendee.jwt");
+    assert.equal(localStorage.getItem(TOKEN_KEY), "attendee.jwt");
   }, { search: "?c=c" });
 });
 
@@ -191,7 +252,7 @@ test("signUp: when registration fails the ticket is a local Demo ticket and no a
       const t = await completeSignup({ slug: "c" }, validProfile());
       assert.equal(t.source, "local");
       assert.match(t.token, /^demo\./);
-      assert.equal(sessionStorage.getItem(TOKEN_KEY), null);
+      assert.equal(localStorage.getItem(TOKEN_KEY), null);
     });
   }
 });

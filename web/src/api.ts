@@ -26,34 +26,86 @@ import type {
 import { searchFilterQuery } from "./searchFilters.js";
 
 const TOKEN_KEY = "cc.token";
+const EXPIRES_KEY = "cc.token.expiresAt";
+/** The provider a session came from ("github" after a GitHub sign-in); absent for a chat registration. */
+const VIA_KEY = "cc.token.via";
 let memoryToken: string | null = null;
 
+/**
+ * The attendee token. It lives in localStorage, so every tab of this browser shares it until the server's expiry
+ * (8 hours). A stored token past its expiry is dropped here, so the page asks for a sign-in instead of failing later.
+ */
 export function getToken(): string | null {
   try {
-    return memoryToken ?? sessionStorage.getItem(TOKEN_KEY);
+    const expiresAt = localStorage.getItem(EXPIRES_KEY);
+    if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
+      memoryToken = null;
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(EXPIRES_KEY);
+      localStorage.removeItem(VIA_KEY);
+      return null;
+    }
+    return memoryToken ?? localStorage.getItem(TOKEN_KEY);
   } catch {
     return memoryToken;
   }
 }
 
-export function setToken(token: string): void {
+/** The provider of the live session, or null: a chat registration has none. */
+export function sessionVia(): string | null {
+  if (getToken() === null) return null;
+  try {
+    return localStorage.getItem(VIA_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Records (or clears, with null) the provider the live session came from. */
+export function setSessionVia(provider: string | null): void {
+  try {
+    if (provider) localStorage.setItem(VIA_KEY, provider);
+    else localStorage.removeItem(VIA_KEY);
+  } catch {
+    // storage unavailable: the session simply shows no provider
+  }
+}
+
+/** The sign-in claim a new GitHub account left in this tab (15 minutes), or null when none is pending or it has expired. */
+export function pendingClaim(): { token: string; expiresAt: string } | null {
+  try {
+    const claim = JSON.parse(sessionStorage.getItem("cc.identity-claim") ?? "null") as { token?: unknown; expiresAt?: unknown } | null;
+    return claim && typeof claim.token === "string" && typeof claim.expiresAt === "string" && Date.parse(claim.expiresAt) > Date.now()
+      ? { token: claim.token, expiresAt: claim.expiresAt }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token: string, expiresAt?: string, via: string | null = null): void {
   if (token !== getToken()) resetOfflineSession();
   memoryToken = token;
   try {
-    sessionStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_KEY, token);
+    if (expiresAt) localStorage.setItem(EXPIRES_KEY, expiresAt);
+    else localStorage.removeItem(EXPIRES_KEY);
+    setSessionVia(via);
   } catch {
     // storage unavailable; token only lives for this page view
   }
 }
 
 /**
- * Signs out of this tab. The token is session-scoped (and the profile in localStorage is the visitor's own),
- * so only the tab's session keys go: the linked display profile stays for a later "Sign in again".
+ * Signs this browser out. The token goes from every tab; the linked display profile stays in localStorage, and the
+ * visitor's saved data is untouched.
  */
 export function signOut(): void {
   memoryToken = null;
   try {
-    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(EXPIRES_KEY);
+    localStorage.removeItem(VIA_KEY);
   } catch {
     // storage unavailable; the in-memory token is already gone
   }
@@ -61,20 +113,6 @@ export function signOut(): void {
 }
 
 const LINKED_KEY = "cc.linked.v1";
-
-/** True when a sign-in left a display profile for `provider` in this browser; it says nothing about a live session. */
-export function hasLinkedAccount(provider: "github"): boolean {
-  try {
-    const raw = localStorage.getItem(LINKED_KEY);
-    if (!raw) return false;
-    const linked: unknown = JSON.parse(raw);
-    if (!linked || typeof linked !== "object" || Array.isArray(linked) || !(provider in linked)) return false;
-    const entry: unknown = linked[provider];
-    return !!entry && typeof entry === "object" && !Array.isArray(entry) && "linkedAt" in entry && entry.linkedAt != null;
-  } catch {
-    return false; // storage unavailable or corrupt
-  }
-}
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
@@ -169,6 +207,16 @@ export const api = {
     call<CatalogTopicsResponse>(routes.catalogTopics, { query: scopedQuery(conference) }),
   status: () => call<StatusResponse>(routes.status),
   register: (body: RegisterRequest) => call<RegisterResponse>(routes.register, { body }),
+  /** Attaches a new account's sign-in claim to the signed-in attendee (204). A 409 means the account already has a profile. */
+  linkIdentity: async (identityClaim: string): Promise<void> => {
+    const token = getToken();
+    const res = await fetch(routes.linkIdentity.path, {
+      method: routes.linkIdentity.method,
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ identityClaim }),
+    });
+    if (!res.ok) throw new ApiError(`${routes.linkIdentity.path} failed: ${res.status}`, res.status);
+  },
   onboarding: async (body: OnboardingRequest, conference: string | null) =>
     call<OnboardingResponse>(routes.onboarding, { body, query: scopedQuery(conference) }),
   search: async (q: string, mode: SearchMode, debug = false, filters: SearchFilterParams = {}, conference: string | null = null) =>

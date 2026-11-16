@@ -38,6 +38,8 @@ canvas[data-qr] { --qr-ink: #000000; --qr-paper: #ffffff; }
 .cc-missing { display: grid; gap: var(--s-5); }
 .cc-missing p { margin: 0; font-size: var(--t-lead); line-height: 1.5; max-width: 40ch; }
 [data-missing][hidden], [data-demo-note][hidden] { display: none; }
+.cc-notice > p { margin: 0; }
+.cc-notice .btn-row { margin: var(--s-3) 0 0; }
 /* not found: only the hero's notice and the way back stay */
 html[data-conference-missing] [data-found] { display: none; }
 html[data-conference-missing] main > section:not(.hero) { display: none; }
@@ -80,3 +82,12 @@ html[data-conference-missing] .cc-reg { grid-template-areas: "main main"; }
 .cc-hero .hero__lead[hidden] { display: none; }
 
 [data-c-row][hidden] { display: none; }
+
+.cc-ticket { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: var(--s-4); align-items: start; margin-top: var(--s-4); }
+.cc-ticket[hidden] { display: none; }
+.cc-ticket canvas { width: 160px !important; height: 160px !important; }
+.cc-ticket [data-ticket-fields] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); margin: 0; }
+.cc-ticket [data-ticket-fields] > div { display: grid; gap: 2px; min-width: 0; }
+.cc-ticket [data-ticket-fields] > div:is([data-field="name"], [data-field="interests"]) { grid-column: 1 / -1; }
+.cc-ticket dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 639px) { .cc-ticket { grid-template-columns: minmax(0, 1fr); } }

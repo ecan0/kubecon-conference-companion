@@ -38,7 +38,7 @@ test("record labelled offline UI fallback", async ({ browser }) => {
   });
   try {
     // Sign-up is the static site (/site/register.html) now; this React-app recording starts from a synthetic session.
-    await page.addInitScript(() => sessionStorage.setItem("cc.token", "synthetic-session-not-valid"));
+    await page.addInitScript(() => localStorage.setItem("cc.token", "synthetic-session-not-valid"));
     await page.goto("http://127.0.0.1:4173/onboarding?c=kubecon-na-2026");
     await page.getByLabel("kubernetes", { exact: true }).check();
     await page.screenshot({ path: resolve(output, "fallback-onboarding.png") });

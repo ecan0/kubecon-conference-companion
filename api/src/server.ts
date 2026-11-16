@@ -119,7 +119,7 @@ export function buildServer(config: Config, deps: ServerDeps = {}): FastifyInsta
   });
 
   // Registration chat (POST /api/chat) and the live demo stream (GET /api/events).
-  app.register(chatRoutes, { runClaude: deps.runClaude === undefined ? resolveChatRunner(config) : deps.runClaude, rateLimit: limits.chat });
+  app.register(chatRoutes, { db, runClaude: deps.runClaude === undefined ? resolveChatRunner(config) : deps.runClaude, rateLimit: limits.chat });
   app.register(eventsRoutes, { hub, rateLimit: limits.events });
   // Sign in with GitHub to link an account to an attendee profile (docs/sign-in.md). Stores only an HMAC link.
   app.register(authRoutes, { oauth: config.oauth, db, tokens, identityHashKey: config.identityHashKey, rateLimit: limits.auth, ...deps.auth });

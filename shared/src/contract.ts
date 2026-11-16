@@ -101,13 +101,23 @@ export interface Consent {
   qrCheckin: boolean;
 }
 
+/**
+ * POST /api/register. `conference` must name a catalogue event with published talks that has not
+ * finished yet: a missing slug answers 400 `{ error: "conference_required" }`, a conference with no
+ * talks answers 409 `{ error: "schedule_not_published" }`, and a conference whose talks have all
+ * ended answers 409 `{ error: "event_ended" }` (ended wins when both apply). The talks themselves
+ * stay browsable; only registration closes.
+ */
 export interface RegisterRequest {
   name: string;
   email: string;
   interests: string[];
   consent: Consent;
-  /** Optional, never stored: conference slug and returning-visitor flag, used only for the live demo stream (GET /api/events). */
-  conference?: string;
+  /**
+   * Catalogue conference slug (the page's `?c=`). Required; still never stored on the attendee: it
+   * selects the talks gate and the conference label on the live demo stream (GET /api/events).
+   */
+  conference: string;
   returning?: boolean;
   /** From the sign-in callback `claim`: links the new profile to the signed-in provider account. */
   identityClaim?: string;
@@ -394,6 +404,10 @@ export interface ChatProfile {
 
 /** POST /api/chat (no auth). Stateless: send the whole transcript every turn. */
 export interface ChatRequest {
+  /**
+   * `slug` picks the conference. `topics` is only a fallback: the API resolves the topic chips from
+   * the conference's own talks (its most frequent tags) and ignores this list when talks exist.
+   */
   conference: { slug: string; name?: string; topics?: string[] };
   via?: ChatVia | null;
   messages: ChatMessage[];
@@ -475,6 +489,8 @@ export const routes = {
   me: { method: "GET", path: "/api/me" },
   /** Bearer session token. Deletes the caller's profile, saved schedule and entitlement; 204 with no body, 401 if already gone. */
   deleteMe: { method: "DELETE", path: "/api/me" },
+  /** Bearer session token, body `{ identityClaim }`: attaches a new account's sign-in claim to the signed-in attendee. 204; 401 without a session; 400 for an invalid claim; 409 when the account already has a profile. */
+  linkIdentity: { method: "POST", path: "/api/me/identity" },
   /** Catalog route. Query: `conference` (required). */
   onboarding: { method: "POST", path: "/api/onboarding" },
   /** Catalog route. Query: `conference` (required), plus the optional search filters. */

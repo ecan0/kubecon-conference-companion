@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { isConferenceSlug } from "@cc/shared";
 import { api, ApiError } from "../api.js";
+import { withConference } from "../conferenceLink.js";
 import "./page-state.css";
 
 /**
@@ -32,7 +33,7 @@ export function ErrorState({ children, onRetry, retryLabel = "Try again" }: {
 export function SessionExpiredState() {
   const { search } = useLocation();
   return <div className="page-state page-state-error">
-    <p role="alert">Your session has expired. <a href={`/site/register.html${search}`}>Register again</a> to continue.</p>
+    <p role="alert">Your session has expired. <a href={withConference("/site/register.html", search)}>Register again</a> to continue.</p>
   </div>;
 }
 
@@ -57,11 +58,15 @@ export function isSessionExpired(err: unknown): boolean {
   return err instanceof ApiError && err.status === 401;
 }
 
-/** The catalogue facts a page needs to name an event and point at its official site. */
+/** The catalogue facts a page needs to name an event, tell whether it is over, and point at its official site. */
 export interface ConferenceInfo {
   slug: string;
   name: string;
   url?: string;
+  /** Calendar day of the event's first day (YYYY-MM-DD), as the catalogue states it. */
+  startDate?: string;
+  /** Calendar day of the event's last day (YYYY-MM-DD): registration closes once it has passed. */
+  endDate?: string;
 }
 
 let cataloguePromise: Promise<ConferenceInfo[]> | null = null;
@@ -76,9 +81,15 @@ function conferenceCatalogue(): Promise<ConferenceInfo[]> {
       if (!Array.isArray(data)) return [];
       return data.flatMap((entry): ConferenceInfo[] => {
         if (!entry || typeof entry !== "object") return [];
-        const { slug, name, url } = entry as Record<string, unknown>;
+        const { slug, name, url, startDate, endDate } = entry as Record<string, unknown>;
         if (typeof slug !== "string" || typeof name !== "string") return [];
-        return [{ slug, name, ...(typeof url === "string" ? { url } : {}) }];
+        return [{
+          slug,
+          name,
+          ...(typeof url === "string" ? { url } : {}),
+          ...(typeof startDate === "string" ? { startDate } : {}),
+          ...(typeof endDate === "string" ? { endDate } : {}),
+        }];
       });
     } catch {
       return [];
@@ -102,6 +113,17 @@ export function useConferenceEntry(slug: string | null): ConferenceInfo | null {
     return () => { active = false; };
   }, [slug]);
   return entry;
+}
+
+/**
+ * Whether the event is over, using the shared client rule: the current time is later than the end of
+ * `endDate` everywhere on Earth, so the last minute of that calendar day in UTC−12 must have passed.
+ * `now` is a parameter so tests never depend on the real clock; an entry with no usable end date
+ * (or no entry yet) is never "ended", which keeps registration available when the catalogue is unknown.
+ */
+export function hasEnded(entry: ConferenceInfo | null, now: number = Date.now()): boolean {
+  const end = entry?.endDate ? Date.parse(`${entry.endDate}T23:59:59.999-12:00`) : NaN;
+  return Number.isFinite(end) && now > end;
 }
 
 /** "published" and "unpublished" are known from the catalog; "unknown" means the check failed. */
@@ -132,5 +154,24 @@ export function UnpublishedTalksState({ conference }: { conference: ConferenceIn
   return <p role="status" className="page-state page-state-empty">
     Talks for {name} have not been published yet.{" "}
     <a href={conference?.url ?? "/site/#conferences"}>{conference?.url ? "Open the official event site" : "Open the conference list"}</a>.
+  </p>;
+}
+
+/**
+ * Shown in place of the registration prompt once the event is over. The programme and the event page
+ * stay reachable — only a new registration is impossible — and "Browse the talks" is offered only when
+ * the event actually published talks, so the link never leads to an empty list.
+ */
+export function EndedConferenceState({ conference, talks, search }: {
+  conference: ConferenceInfo;
+  talks: TalkAvailability;
+  search: string;
+}) {
+  return <p role="status" className="page-state page-state-empty">
+    {conference.name} has ended, so registration is closed.{" "}
+    {talks === "published" && <>
+      <a href={withConference(`/search?c=${conference.slug}`, search)}>Browse the talks</a>.{" "}
+    </>}
+    <a href={`/site/conference.html?c=${conference.slug}`}>Open the event page</a>.
   </p>;
 }

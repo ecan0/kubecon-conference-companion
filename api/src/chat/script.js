@@ -282,24 +282,27 @@ function parseRole(text) {
   return isSensitive(role) ? "attendee" : role;
 }
 
+/** Words that mean "no preference" when they are a whole answer or one item of a list. */
+const NO_FORMATS = /^(?:none|no|nope|nothing|n\/a|no preference|nah|skip|any)$/i;
+
+/** Comma-separated talk formats, kept as "workshops, deep dives". An empty answer, or only "none" words, means none. */
 function parseFormats(text) {
-  if (/^\s*(?:none|no|nope|nothing|n\/a|no preference|nah|skip|any)\b/i.test(text)) return "";
-  const f = cleanText(text, LIMITS.formats);
-  return isSensitive(f) ? "" : f;
+  const items = String(text).split(",").map((s) => cleanText(s, LIMITS.formats)).filter((s) => s && !NO_FORMATS.test(s));
+  const f = cleanText(items.join(", "), LIMITS.formats);
+  return f && !isSensitive(f) ? f : "none";
 }
 
 const FIRST_TIME_STEPS = ["name", "role", "interests", "goal", "formats", "confirm"];
 
-/** What the host says up front, in three short lines: what signing up does (QR ticket, kept profile until deleted, totals-only map). */
+/** What the host says up front, in two short paragraphs: what signing up gives (a QR ticket) and what is kept (answers for next time, deletable; organisers see totals only). */
 export const REGISTER_NOTICE =
-  "Hi! Signing up gets you a QR ticket for the room doors.\n" +
-  "I'll keep your answers for your next conference, until you delete them from your profile.\n" +
-  "Organisers only see totals in their interest map, and groups under 5 show up as \"other\".";
+  "Hi! A few quick questions and you'll have a QR ticket for the room doors.\n\n" +
+  "I'll remember your answers for next time (delete them anytime from your profile), and organisers only ever see totals.";
 
 function summary(d) {
   return (
-    `Here's what I've got:\nName: ${d.name}\nRole: ${d.role}\nTopics: ${d.interests.join(", ")}\n` +
-    `Goal: ${d.goal || "explore"}\nFormats: ${d.formats || "no preference"}\nShall I sign you up with these?`
+    `Here's what I've got:\n\nName: ${d.name}\nRole: ${d.role}\nTopics: ${d.interests.join(", ")}\n` +
+    `Goal: ${d.goal || "explore"}\nFormats: ${d.formats || "none"}\n\nShall I sign you up with these?`
   );
 }
 
@@ -324,7 +327,7 @@ function parseFirstConfirm(text) {
 }
 
 const CHANGE_FIELDS = [
-  [/name|call/i, "name"], [/role|job|work/i, "role"], [/topic|interest/i, "interests"], [/goal|day/i, "goal"], [/format|talk/i, "formats"],
+  [/name|call/i, "name"], [/role|job|work/i, "role"], [/topic|interest/i, "interests"], [/goal|event/i, "goal"], [/format|talk/i, "formats"],
 ];
 
 /**
@@ -395,11 +398,14 @@ function replay(messages, known) {
   return { step: queue[0] ?? null, data, notice, result, returning };
 }
 
+/** The talk-formats question. An empty answer to it is sent as "none" by the chat page. */
+export const FORMATS_QUESTION = 'Which talk formats do you want, like workshops or deep dives? Separate several with commas, or type "none".';
+
 const QUESTIONS = {
-  role: (d) => `Nice to meet you, ${d.name}! What do you do for work?`,
-  interests: () => "What would you like to hear about? Pick 3 to 6 topics below, or type your own.",
-  goal: () => "What are you hoping to get out of the day?",
-  formats: () => "Any kinds of talks you love or would rather skip, like deep dives or workshops? \"None\" is fine too.",
+  role: (d) => `Nice to meet you, ${d.name}! What do you do?`,
+  interests: () => "What do you want to hear about? Pick 3 to 6 topics, or type your own.",
+  goal: () => "What are you hoping to get out of the event?",
+  formats: () => FORMATS_QUESTION,
   confirm: (d) => summary(d),
   change: () => "Sure. What should I change: your name, role, topics, goal or formats?",
 };
@@ -439,7 +445,7 @@ export function scriptedTurn(ctx = {}) {
     return { reply: `${lead}Which topics would you like at ${confName}? Pick some below, or type your own.`, done: false, ...ask("topics", { selected: known.interests }) };
   }
   if (step === "name") {
-    const text = first ? `${ack}${REGISTER_NOTICE}\nWhat should I call you?` : `${lead}What should I call you?`;
+    const text = first ? `${ack}${REGISTER_NOTICE}\n\nWhat should I call you?` : `${lead}What should I call you?`;
     return { reply: text, done: false, ask: null };
   }
   if (step) {

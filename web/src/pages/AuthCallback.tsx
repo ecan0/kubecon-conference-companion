@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import type { AuthCallbackResponse } from "@cc/shared";
-import { api, setToken } from "../api.js";
+import { ApiError, api, getToken, setSessionVia, setToken } from "../api.js";
 import { siteNavigation } from "../App.js";
 import { ErrorState, LoadingState } from "../components/PageState.js";
 
@@ -62,6 +62,7 @@ export function AuthCallback() {
   const { provider = "" } = useParams();
   const { search } = useLocation();
   const [failed, setFailed] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const [appLink, setAppLink] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,8 +77,17 @@ export function AuthCallback() {
     (async () => {
       try {
         const linked = await postCallbackOnce(provider, code, state);
+        if (linked.claim && !linked.session && getToken() !== null) {
+          // A new account while this browser already holds a session (a chat registration): link the account to that
+          // registration rather than starting a second one. From here the session counts as a GitHub session.
+          await api.linkIdentity(linked.claim.token);
+          storeLinked(linked);
+          setSessionVia(linked.provider);
+          if (!cancelled) siteNavigation.replace(linked.return);
+          return;
+        }
         if (linked.session) {
-          setToken(linked.session.token);
+          setToken(linked.session.token, linked.session.expiresAt, linked.provider);
           try { sessionStorage.removeItem(CLAIM_KEY); } catch { /* no browser storage */ }
         }
         if (linked.claim) {
@@ -91,13 +101,20 @@ export function AuthCallback() {
         } else {
           siteNavigation.replace(linked.claim && !linked.session ? claimTarget(linked.provider, linked.return) : linked.return);
         }
-      } catch {
-        if (!cancelled) setFailed(true);
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 409) setConflict(true);
+        else setFailed(true);
       }
     })();
     return () => { cancelled = true; };
   }, [provider, search]);
 
+  if (conflict) {
+    return <ErrorState>
+      This GitHub account already has a profile, so it was not linked to this registration. Sign out, then sign in with GitHub to use that profile. <a href={PROFILE_PATH}>Back to your profile</a>
+    </ErrorState>;
+  }
   if (failed) {
     return <ErrorState>
       We could not link that account. <a href={PROFILE_PATH}>Back to your profile</a>
