@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import type { ScheduleResponse } from "@cc/shared";
 import { api, getToken } from "../api.js";
 import { withConference } from "../conferenceLink.js";
+import { conferenceSlug, hasEnded, useConferenceEntry } from "./PageState.js";
 
 type ScheduleApi = Pick<typeof api, "getSchedule" | "saveSchedule">;
 type State = "idle" | "saving" | "added" | "already" | "conflict" | "register" | "error";
@@ -14,6 +15,7 @@ type State = "idle" | "saving" | "added" | "already" | "conflict" | "register" |
  */
 export function AddToSchedule({ talkId, schedule = api, hasSession = () => !!getToken() }: { talkId: string; schedule?: ScheduleApi; hasSession?: () => boolean }) {
   const { search } = useLocation();
+  const conferenceEntry = useConferenceEntry(conferenceSlug(search));
   const [state, setState] = useState<State>(() => (hasSession() ? "idle" : "register"));
 
   async function onClick() {
@@ -32,6 +34,10 @@ export function AddToSchedule({ talkId, schedule = api, hasSession = () => !!get
   }
 
   if (state === "register") {
+    // A session that expired mid-action lands here too: registration is closed either way for a past event.
+    if (conferenceEntry && hasEnded(conferenceEntry)) {
+      return <p role="status">{conferenceEntry.name} has ended, so registration is closed.</p>;
+    }
     return <p role="status"><a href={withConference("/site/register.html", search)}>Register</a> to add talks to your schedule.</p>;
   }
   return <div className="add-to-schedule">

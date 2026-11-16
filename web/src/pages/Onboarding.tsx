@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ExperienceLevel, SearchHit } from "@cc/shared";
-import { api } from "../api.js";
+import { ApiError, api, getToken, signOut } from "../api.js";
 import { NoConferenceState, UnpublishedTalksState, conferenceSlug, useConferenceEntry } from "../components/PageState.js";
 import { rememberSkipped } from "../skippedTalks.js";
 import { withConference } from "../conferenceLink.js";
@@ -32,6 +32,7 @@ export function Onboarding() {
   const [freeText, setFreeText] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [needsRegister, setNeedsRegister] = useState(false);
   const [unpublished, setUnpublished] = useState(false);
   useEffect(() => { setUnpublished(false); }, [conference]);
   async function onSubmit(event: FormEvent) {
@@ -41,11 +42,14 @@ export function Onboarding() {
       setError("Choose a topic or goal, or describe what you would like to learn.");
       return;
     }
-    setPending(true);
     setError("");
+    setNeedsRegister(false);
     setUnpublished(false);
+    setPending(true);
+    let step = "finding talks";
     try {
       const result = await api.onboarding({ answers: { topics, experience, goals, freeText: freeText.trim() } }, conference);
+      step = "searching the talks";
       const matches = await api.search(result.query.text, result.query.mode, false, {}, conference);
       const talkIds = selectTalks(matches.hits);
       if (talkIds.length === 0) {
@@ -56,10 +60,25 @@ export function Onboarding() {
         setError("No matching talks found. Try a broader topic or a shorter description.");
         return;
       }
+      if (getToken() === null) {
+        // Saving needs this browser's session: say so before the save, not after the server refuses it.
+        setError(`Register for ${conferenceEntry?.name ?? "this conference"} first, then find talks to save your schedule.`);
+        setNeedsRegister(true);
+        return;
+      }
+      step = "saving your schedule";
       rememberSkipped((await api.saveSchedule({ talkIds })).skipped);
       navigate(withConference("/schedule", search));
-    } catch {
-      setError("We could not build your schedule. Please try again. If your session expired, register again.");
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        // The server does not accept this browser's session (missing, malformed or expired): forget it, so My Schedule asks to register.
+        signOut();
+        setError(`Your session is no longer accepted, so the schedule was not saved. Register for ${conferenceEntry?.name ?? "this conference"} again.`);
+        setNeedsRegister(true);
+      } else {
+        const status = cause instanceof ApiError ? `HTTP ${cause.status}` : "no response from the server";
+        setError(`We could not build your schedule while ${step} (${status}). Please try again.`);
+      }
     } finally { setPending(false); }
   }
   if (!conference) return <div className="attendee-form">
@@ -87,5 +106,6 @@ export function Onboarding() {
       value={freeText} onChange={(event) => setFreeText(event.target.value)} />
     <button type="submit" disabled={pending}>{pending ? "Building your schedule…" : "Find talks"}</button>
     {error && <p role="alert">{error}</p>}
+    {needsRegister && <p><a href={withConference("/site/register.html", search)}>Register for this conference</a></p>}
   </form>;
 }

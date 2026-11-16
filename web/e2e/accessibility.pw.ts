@@ -27,7 +27,7 @@ for (const width of [375, 1280]) {
     test(`${path} at ${width}px has no serious or critical accessibility violations`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       // The schedule is personal: give the page a (synthetic) registered session, as sign-up would.
-      if (path === "schedule") await page.addInitScript(() => sessionStorage.setItem("cc.token", "synthetic-token"));
+      if (path === "schedule") await page.addInitScript(() => localStorage.setItem("cc.token", "synthetic-token"));
       await page.goto(`/${path}?c=kubecon-na-2026`);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       if (path === "onboarding") await expect(page.getByLabel("kubernetes", { exact: true })).toBeVisible();
@@ -50,8 +50,13 @@ for (const width of [375, 1280]) {
   }
 }
 
+// The register prompt depends on the event's dates, so each case serves its own catalogue entry: never today's date.
+const catalogue = (endDate: string) => [{ slug: "kubecon-na-2026", name: "KubeCon + CloudNativeCon North America 2026",
+  startDate: endDate, endDate, city: "Salt Lake City", venue: "Hyatt Regency Salt Lake City", url: "https://events.linuxfoundation.org/" }];
+
 for (const width of [375, 1280]) {
-  test(`schedule without a session at ${width}px prompts to register and is accessible`, async ({ page }) => {
+  test(`schedule without a session at ${width}px prompts to register for an upcoming event and is accessible`, async ({ page }) => {
+    await page.route("**/site/data/conferences.json", (route) => route.fulfill({ json: catalogue("2999-11-12") }));
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/schedule?c=kubecon-na-2026");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -60,5 +65,16 @@ for (const width of [375, 1280]) {
     const report = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
     expect(report.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test(`schedule without a session at ${width}px says an ended event is closed, links its talks and is accessible`, async ({ page }) => {
+    await page.route("**/site/data/conferences.json", (route) => route.fulfill({ json: catalogue("2020-11-12") }));
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/schedule?c=kubecon-na-2026");
+    await expect(page.getByText("KubeCon + CloudNativeCon North America 2026 has ended, so registration is closed.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Register now" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Browse the talks" })).toBeVisible();
+    const report = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    expect(report.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
 }

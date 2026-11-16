@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -93,3 +94,20 @@ for (const { path, title, heading } of pages) {
     });
   }
 }
+
+// The hero entrance (assets/motion) runs only outside headless Chrome. It used to take the h1's nodes aside for
+// the animation and put them back afterwards, so a name filled in during the entrance reverted to "Loading…".
+test.describe("hero heading keeps the conference name through the entrance animation", () => {
+  test.use({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" });
+  for (const path of ["/site/conference.html?c=kubecon-na-2026", "/site/register.html?c=kubecon-na-2026"]) {
+    test(path, async ({ page }) => {
+      // the page scripts arrive after the entrance has started, as on a slow first load
+      await page.route(/\/site\/js\/(conference|pages|conferences)\.js/, async (route) => { await delay(400); await route.continue(); });
+      await page.goto(path, { waitUntil: "load" });
+      await page.waitForTimeout(2500);
+      const heading = page.locator("#hero-h");
+      await expect(heading).toContainText("KubeCon + CloudNativeCon North America 2026");
+      await expect(heading).not.toContainText("Loading");
+    });
+  }
+});
