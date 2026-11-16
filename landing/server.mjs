@@ -2,7 +2,7 @@
 // Conference Companion landing server.
 //   node landing/server.mjs
 // Serves landing/ statically plus a small JSON API (see README.md).
-// Zero runtime dependencies: Node 22+ built-ins only.
+// Zero runtime dependencies: Node 26+ built-ins only.
 //
 // Privacy rule (design doc section 6): attendee data is never logged. The
 // request log is one line per request: method, path (no query), status, ms.

@@ -9,7 +9,7 @@
 // 3. Writes demo-attendees.json and demo-aggregates.json after self-checks pass.
 //
 // Deterministic: seeded mulberry32, no Math.random. The only clock read is generatedAt.
-// Node 22, built-ins only. Run: node landing/data/generate-demo.mjs
+// Node 26, built-ins only. Run: node landing/data/generate-demo.mjs
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
