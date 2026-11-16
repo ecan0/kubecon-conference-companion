@@ -61,7 +61,7 @@
     </nav>
     <div class="nav__actions">
       <a class="btn btn--github" data-signin="github" href="/api/auth/github/start" hidden>Sign in with GitHub</a>
-      <button class="btn" type="button" data-signout hidden>Sign out</button>
+      <button class="btn btn--secondary" type="button" data-signout hidden>Sign out</button>
     </div>
     <button class="nav__toggle" type="button" aria-expanded="false" aria-label="Menu"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   </div>
@@ -74,7 +74,7 @@
       <div class="hero__text">
         <h1 id="hero-h">Technology events tailored directly to your interests</h1>
         <p class="hero__lead">Register in a chat. Get a schedule built from your interests. Scan a QR code at each room door.</p>
-        <div class="btn-row"><a class="btn btn--primary" data-next-register href="register.html?c=aws-reinvent-2026">Register for a conference<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a><a class="btn btn--secondary" href="#conferences">Find a conference</a></div>
+        <div class="btn-row"><a class="btn btn--primary" data-next-register href="register.html?c=aws-reinvent-2026"><span data-next-register-label>Register for a conference</span><svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a><a class="btn btn--secondary" href="#conferences">Find a conference</a></div>
         <div class="hero__ticket" aria-label="Next event" data-next-event>
           <span class="pxframe"><span class="pxframe__in"><canvas data-qr="self" data-qr-scale="2" data-qr-conference="aws-reinvent-2026" role="img" aria-label="QR code that opens registration for AWS re:Invent on your phone"></canvas></span></span>
           <div><p class="t-label">Next event</p><p class="hero__ticket-name" data-next-name>AWS re:Invent</p><p class="hero__ticket-meta" data-next-meta>Mon 30 Nov 2026, Las Vegas</p></div>
@@ -240,6 +240,14 @@
           <div class="field"><label for="find-q">Search conferences</label><input id="find-q" name="q" type="search" autocomplete="off" data-find-q></div>
           <div class="field"><label for="find-topic">Topic</label><select id="find-topic" name="topic" data-find-topic><option value="">All topics</option></select></div>
         </div>
+        <div class="finder__filters" role="group" aria-label="Filter conferences" data-find-filters hidden>
+          <button type="button" class="finder__toggle" aria-pressed="true" data-find-toggle="upcoming">Upcoming</button>
+          <button type="button" class="finder__toggle" aria-pressed="false" data-find-toggle="nextMonths">Next 6 months</button>
+          <button type="button" class="finder__toggle" aria-pressed="false" data-find-toggle="near">Near me</button>
+          <label class="finder__km" data-find-km hidden>Within <select data-find-km-select><option value="100">100 km</option><option value="250">250 km</option><option value="500">500 km</option><option value="1000" selected>1,000 km</option><option value="2500">2,500 km</option></select></label>
+          <button type="button" class="finder__toggle" aria-pressed="false" data-find-toggle="talks">Talks published</button>
+        </div>
+        <p class="finder__hint" role="status" data-find-hint hidden></p>
         <ul class="find__list" data-conference-results>
           <li><a class="card find-card" data-real href="conference.html?c=cloud-native-hackathon-slc-2026"><span class="find-card__name">Cloud Native Hackathon</span><span class="find-card__meta">Salt Lake City · The Shop Workspace</span><span class="find-card__date">9 Nov 2026</span></a></li>
           <li><a class="card find-card" data-real href="conference.html?c=aws-reinvent-2026"><span class="find-card__name">AWS re:Invent</span><span class="find-card__meta">Las Vegas · Venue to be announced</span><span class="find-card__date">30 Nov – 4 Dec 2026</span></a></li>

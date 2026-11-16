@@ -3,7 +3,7 @@
 // Provider avatar images are never loaded: initials only. Pure helpers first, DOM glue for the header button at the end.
 
 import { authUrl } from "./auth.js";
-import { sessionToken, signOut } from "./companion-api.js";
+import { pendingClaim, sessionToken, signOut } from "./companion-api.js";
 
 export const LINKED_KEY = "cc.linked.v1";
 export const PROVIDERS = [
@@ -66,32 +66,32 @@ export async function fetchProviders(fetchImpl = globalThis.fetch) {
 }
 
 // ------------------------------------------------------------------ header: "Sign in with GitHub" (a[data-signin]) and "Sign out"
-// (button[data-signout]). The link shows when the provider is enabled and no session exists, and reads "Sign in again"
-// when a linked profile is still in this browser. A returning account goes back to the return path; a new account gets
-// a claim and the app's callback sends it on to register.html?via=<provider>. On conference.html the return is that
-// conference's registration, and without a conference the visitor is sent back to the page they are on.
+// (button[data-signout]). Sign out shows for any session. The sign-in link shows when the provider is enabled, unless the
+// session already came from that provider. A chat registration can still link GitHub: the link stays beside Sign out, and a
+// switch asks first.
+// A returning account goes back to the return path; a new account gets a claim and the callback attaches it.
 const signInLinks = typeof document !== "undefined" ? document.querySelectorAll("a[data-signin]") : [];
 const signOutButtons = typeof document !== "undefined" ? document.querySelectorAll("button[data-signout]") : [];
 const signedIn = sessionToken() !== null;
-const linkedAccounts = readLinked();
+const claimPending = pendingClaim() !== null; // a GitHub sign-up is under way: it already counts as signed in
+export const SWITCH_WARNING = "If this GitHub account already has a profile, this browser switches to that profile. Continue?";
 
-if (signOutButtons.length && signedIn) {
-  for (const a of signInLinks) a.hidden = true;
-  for (const b of signOutButtons) {
-    b.hidden = false;
-    b.addEventListener("click", () => { signOut(); location.reload(); });
-  }
-} else if (signInLinks.length) {
+for (const b of signOutButtons) {
+  b.hidden = !signedIn;
+  if (signedIn) b.addEventListener("click", () => { signOut(); location.assign("/site/"); });
+}
+if (signInLinks.length) {
   fetchProviders().then((enabled) => {
     const slug = new URLSearchParams(location.search).get("c");
     const onConference = document.querySelector("[data-c-link]") !== null;
     for (const a of signInLinks) {
       const id = a.dataset.signin;
-      if (!enabled[id]) continue;
+      if (!enabled[id] || signedIn || claimPending) continue;
       const returnPath = a.dataset.return || (onConference && slug ? registerReturnPath(slug, id) : location.pathname + location.search);
       a.href = startUrl(id, returnPath);
-      if (linkedAccounts[id]) a.textContent = "Sign in again";
       a.hidden = false;
+      const group = a.closest("[data-signin-group]");
+      if (group) group.hidden = false;
     }
   });
 }

@@ -1,6 +1,6 @@
 /* index.html, the five lower sections. js/pages.js renders the conference finder (filter, count, cards,
    the no-results line); this file only adds to it: a "See all conferences" button in the no-results state,
-   which clears the search and the topic and lets pages.js render the full list again. It never renders
+   which clears the search, the topic and the filters, and lets pages.js render the full list again. It never renders
    cards itself, so the two cannot double-render. */
 
 const results = document.querySelector('[data-conference-results]');
@@ -19,6 +19,7 @@ if (results && form) {
     b.addEventListener('click', () => {
       if (q) { q.value = ''; q.dispatchEvent(new Event('input', { bubbles: true })); }
       if (topic) { topic.value = ''; topic.dispatchEvent(new Event('change', { bubbles: true })); }
+      form.querySelectorAll('[data-find-toggle][aria-pressed="true"]').forEach((t) => { if (t.dataset.findToggle !== 'upcoming') t.click(); });
       if (q) q.focus();
     });
     empty.append(b);

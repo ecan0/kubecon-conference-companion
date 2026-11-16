@@ -36,6 +36,7 @@ function page({ search = "", appLinks = [] } = {}) {
   const event = new El("section");
   const qr = new El("div");
   const act = new El("div");
+  const verb = new El("span"); // the h1's "Register for"
   const gate = new El("p");
   gate.hidden = true; // the markup starts hidden; js/conference.js fills it only when the talks are unpublished
   const talks = new El("section");
@@ -59,11 +60,12 @@ function page({ search = "", appLinks = [] } = {}) {
     querySelectorAll(sel) {
       if (sel === "[data-found]") return [qr, act];
       if (sel === "a[data-app-link]") return appLinks;
+      if (sel === "[data-c-verb]") return [verb];
       if (sel === 'canvas[data-qr="self"]') return [];
       return [];
     },
   };
-  return { doc, h1, lead, missing, event, qr, act, gate, talks, talksBody, search };
+  return { doc, h1, lead, missing, event, qr, act, verb, gate, talks, talksBody, search };
 }
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
@@ -127,30 +129,32 @@ test("conference page with ?c= puts the conference on its app links", async () =
   const tile = new El("a");
   tile.setAttribute("data-app-link", "/search");
   tile.setAttribute("href", "http://localhost:5173/search?mode=hybrid");
-  const stub = page({ search: "?c=kubecon-na-2026", appLinks: [nav, tile] });
+  const stub = page({ search: "?c=pycon-us-2027", appLinks: [nav, tile] });
   await load(stub, "with-conference");
-  assert.equal(nav.getAttribute("href"), "http://localhost:5173/schedule?c=kubecon-na-2026");
-  assert.equal(nav.getAttribute("data-app-link"), "/schedule?c=kubecon-na-2026");
-  assert.equal(tile.getAttribute("href"), "http://localhost:5173/search?mode=hybrid&c=kubecon-na-2026");
+  assert.equal(nav.getAttribute("href"), "http://localhost:5173/schedule?c=pycon-us-2027");
+  assert.equal(nav.getAttribute("data-app-link"), "/schedule?c=pycon-us-2027");
+  assert.equal(tile.getAttribute("href"), "http://localhost:5173/search?mode=hybrid&c=pycon-us-2027");
   assert.equal(stub.qr.hidden, false);
+  assert.equal(stub.gate.hidden, true, "an event that has not ended and has no talks answer keeps the page as it is");
 });
 
 test("conference page talks: a conference with published talks shows their topics, never a placeholder talk", async () => {
-  const stub = page({ search: "?c=kubecon-na-2026" });
-  await withApi(() => json({ topics: ["kubernetes", "ai", "observability"] }), async (urls) => {
+  const stub = page({ search: "?c=pycon-us-2027" });
+  await withApi(() => json({ topics: ["python", "tooling", "testing"] }), async (urls) => {
     await load(stub, "talks-published", () => stub.talks.hidden === false);
-    assert.deepEqual(urls, ["/api/catalog/topics?conference=kubecon-na-2026"], "the scoped read carries the conference");
+    assert.deepEqual(urls, ["/api/catalog/topics?conference=pycon-us-2027"], "the scoped read carries the conference");
   });
   assert.equal(stub.talks.hidden, false);
   const [lead, chips, row] = stub.talksBody.children;
   assert.equal(stub.talksBody.children.length, 3);
-  assert.match(lead.textContent, /KubeCon \+ CloudNativeCon North America 2026/);
-  assert.deepEqual(chips.children.map((li) => li.textContent), ["kubernetes", "ai", "observability"]);
+  assert.match(lead.textContent, /PyCon US/);
+  assert.deepEqual(chips.children.map((li) => li.textContent), ["python", "tooling", "testing"]);
   assert.equal(row.children[0].textContent, "Search the talks");
-  assert.equal(row.children[0].getAttribute("data-app-link"), "/search?c=kubecon-na-2026");
+  assert.equal(row.children[0].getAttribute("data-app-link"), "/search?c=pycon-us-2027");
   assert.equal(stub.gate.hidden, true, "a published event keeps its register block, not the notice");
   assert.equal(stub.qr.hidden, false);
   assert.equal(stub.act.hidden, false);
+  assert.equal(stub.verb.hidden, false, "an event that has not ended keeps its heading verb");
 });
 
 test("conference page talks: a conference with no published talks gets the register notice instead of a chat that refuses it", async () => {
@@ -162,10 +166,9 @@ test("conference page talks: a conference with no published talks gets the regis
   assert.equal(stub.talks.hidden, true, "the empty talks panel stays hidden: one notice, never two");
   assert.equal(stub.talksBody.children.length, 0, "no placeholder talk is rendered");
   assert.equal(stub.qr.hidden, true, "no registration QR for an event that cannot register");
-  assert.equal(stub.qr.style.display, "none", "display is inline because css gives the block its own display");
   assert.equal(stub.act.hidden, true, "no register button either");
-  assert.equal(stub.act.style.display, "none");
   assert.equal(stub.gate.hidden, false);
+  assert.equal(stub.verb.hidden, false, "the event has not ended: the heading still offers registration");
   const [text, link, full] = stub.gate.children;
   assert.equal(text, "Registration opens when PyCon US publishes its talks. ");
   assert.equal(link.textContent, "Open the official event site");
@@ -174,12 +177,44 @@ test("conference page talks: a conference with no published talks gets the regis
 });
 
 test("conference page talks: an event with no official site points at the conference list instead", async () => {
-  const stub = page({ search: "?c=cloud-native-hackathon-slc-2026" });
+  const stub = page({ search: "?c=cloud-native-hackathon-slc-2026" }); // over on 9 November, and no url
   await withApi(() => json({ topics: [] }), () => load(stub, "talks-none-no-url", () => stub.gate.hidden === false));
-  const [text, link] = stub.gate.children;
-  assert.equal(text, "Registration opens when Cloud Native Hackathon publishes its talks. ");
+  const [sentence, row] = stub.gate.children;
+  assert.equal(sentence.textContent, "Cloud Native Hackathon has ended, so registration is closed.");
+  const [link] = row.children;
   assert.equal(link.textContent, "Open the conference list");
   assert.equal(link.href, "/site/#conferences");
+});
+
+test("conference page: an ended event hides the register block and says so, with its talks and its official site", async () => {
+  const stub = page({ search: "?c=kubecon-na-2026" }); // ended on 12 November, talks published
+  await withApi(() => json({ topics: ["kubernetes", "observability"] }), async (urls) => {
+    await load(stub, "ended-with-talks", () => stub.gate.hidden === false);
+    assert.deepEqual(urls, ["/api/catalog/topics?conference=kubecon-na-2026"], "the talks are still read: they stay readable");
+  });
+  assert.equal(stub.qr.hidden, true, "no registration QR for an event that has ended");
+  assert.equal(stub.act.hidden, true, "no register button either");
+  assert.equal(stub.verb.hidden, true, "the heading reads the event name alone: nothing is being registered for");
+  assert.equal(stub.gate.hidden, false);
+  assert.equal(stub.talks.hidden, true, "the topics panel gives way to the one notice");
+  const [sentence, row] = stub.gate.children;
+  assert.equal(sentence.textContent, "KubeCon + CloudNativeCon North America 2026 has ended, so registration is closed.");
+  const [browse, site] = row.children;
+  assert.equal(browse.textContent, "Browse the talks");
+  assert.equal(browse.href, "/search?c=kubecon-na-2026");
+  assert.equal(site.textContent, "Open the official event site");
+  assert.equal(site.href, "https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/");
+});
+
+test("conference page: ended wins over not published, so the ended notice is the one that shows", async () => {
+  const stub = page({ search: "?c=kubecon-na-2026" }); // ended, and the API knows of no talks
+  await withApi(() => json({ topics: [] }), () => load(stub, "ended-no-talks", () => stub.gate.hidden === false));
+  const [sentence, row] = stub.gate.children;
+  assert.equal(sentence.textContent, "KubeCon + CloudNativeCon North America 2026 has ended, so registration is closed.");
+  const [site] = row.children;
+  assert.equal(site.textContent, "Open the official event site", "no talks link when there are no talks to browse");
+  assert.equal(stub.qr.hidden, true);
+  assert.equal(stub.act.hidden, true);
 });
 
 test("conference page talks: when the route cannot answer, the panel stays hidden rather than guessing", async () => {

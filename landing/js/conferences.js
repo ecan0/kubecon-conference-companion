@@ -190,7 +190,8 @@ export async function loadConferences() {
   return cache;
 }
 
-const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const localIsoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayIso = () => localIsoDay(new Date());
 
 /**
  * The event the home page features: the soonest real (not `assumed`) event that has not ended by `today`
@@ -201,21 +202,75 @@ export function nextEvent(list, today = todayIso()) {
   return real.find((c) => String(c.endDate || c.startDate) >= today) || real[real.length - 1] || null;
 }
 
+/**
+ * True once the event has ended everywhere on Earth: `now` is later than the end of `endDate` in the last time
+ * zone (−12:00), so its last day still counts as running wherever the visitor is. `now` is a parameter so tests
+ * never depend on the clock. An event with no usable date has not ended.
+ */
+export function hasEnded(conference, now = Date.now()) {
+  const endDate = conference?.endDate || conference?.startDate;
+  if (typeof endDate !== "string") return false;
+  const end = Date.parse(`${endDate}T23:59:59.999-12:00`);
+  return Number.isFinite(end) && now > end;
+}
+
 /** Test hook. */
 export function resetConferencesCache() {
   cache = null;
 }
 
+/** Approximate city centres for "near me" (within a few km). A city not listed here has no distance, so it never matches. */
+export const CITY_CENTRES = Object.freeze({
+  "Salt Lake City": { lat: 40.7608, lng: -111.891 },
+  "Las Vegas": { lat: 36.1699, lng: -115.1398 },
+  Pasadena: { lat: 34.1478, lng: -118.1445 },
+  Seattle: { lat: 47.6062, lng: -122.3321 },
+  "San Francisco": { lat: 37.7749, lng: -122.4194 },
+  "Long Beach": { lat: 33.7701, lng: -118.1937 },
+  "San Jose": { lat: 37.3382, lng: -121.8863 },
+  "New York": { lat: 40.7128, lng: -74.006 },
+  "New Orleans": { lat: 29.9511, lng: -90.0715 },
+});
+
+/** The city centre of an event, or null when its city is not in CITY_CENTRES. */
+export function centreOf(c) {
+  return CITY_CENTRES[c?.city] ?? null;
+}
+
+/** Great-circle distance between two { lat, lng } points, in km. */
+export function distanceKm(a, b) {
+  const rad = (deg) => (deg * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** The day `months` after an ISO day (YYYY-MM-DD), clamped to the last day of that month. */
+function plusMonths(iso, months) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
+
 /**
- * Case-insensitive filter.
- *  q      every whitespace-separated word must appear in name, city, topics or summary
- *  topic  exact topic tag (case-insensitive); "" or "all" = any
- *  month  "YYYY-MM" (conference runs in that month) or "1".."12"/"01".."12" (that month in any year); "" or "all" = any
+ * Case-insensitive filter. A condition that is given must hold; an omitted one does not apply.
+ *  q          every whitespace-separated word must appear in name, city, topics or summary
+ *  topic      exact topic tag (case-insensitive); "" or "all" = any
+ *  month      "YYYY-MM" (conference runs in that month) or "1".."12"/"01".."12" (that month in any year); "" or "all" = any
+ *  upcoming   true: drop events that have ended
+ *  nextMonths true: keep events that have not ended and start within six months of `now`
+ *  near       { from: { lat, lng }, km }: keep events whose city centre is within km of `from`
+ *  withTalks  a Set of slugs with published talks: keep only those (null = no talk filter)
+ *  now        the Date the time filters use (default: now)
  */
-export function filterConferences(list, { q = "", topic = "", month = "" } = {}) {
+export function filterConferences(list, { q = "", topic = "", month = "", upcoming = false, nextMonths = false, near = null, withTalks = null, now = new Date() } = {}) {
   const words = String(q ?? "").toLowerCase().split(/\s+/).filter(Boolean);
   const t = String(topic ?? "").trim().toLowerCase();
   const m = String(month ?? "").trim();
+  const nowMs = now.getTime();
+  const cutoff = plusMonths(localIsoDay(now), 6);
   return list.filter((c) => {
     if (words.length) {
       const hay = [c.name, c.city, ...(c.topics ?? []), c.summary].join(" ").toLowerCase();
@@ -223,6 +278,13 @@ export function filterConferences(list, { q = "", topic = "", month = "" } = {})
     }
     if (t && t !== "all" && !(c.topics ?? []).some((x) => String(x).toLowerCase() === t)) return false;
     if (m && m.toLowerCase() !== "all" && !inMonth(c, m)) return false;
+    if (upcoming && hasEnded(c, nowMs)) return false;
+    if (nextMonths && (hasEnded(c, nowMs) || String(c.startDate) > cutoff)) return false;
+    if (near) {
+      const at = centreOf(c);
+      if (!at || distanceKm(near.from, at) > near.km) return false;
+    }
+    if (withTalks && !withTalks.has(c.slug)) return false;
     return true;
   });
 }
@@ -253,6 +315,33 @@ export function withConference(href, slug) {
   const params = new URLSearchParams(queryAt === -1 ? "" : beforeHash.slice(queryAt + 1));
   params.set("c", slug);
   return `${path}?${params}${hash}`;
+}
+
+/** Where a registered visitor goes next: their schedule, the talks, other conferences. */
+export function nextSteps(slug) {
+  const c = encodeURIComponent(slug);
+  return [
+    { href: `/schedule?c=${c}`, text: "View your schedule", className: "btn btn--primary" },
+    { href: `/onboarding?c=${c}`, text: "Find talks", className: "btn btn--secondary" },
+    { href: "/site/#conferences", text: "Find more conferences", className: "link" },
+  ];
+}
+
+/** The next steps for a registered visitor (the heading already says they are registered): a short prompt over a button row. `status` makes the prompt a live region. */
+export function registeredPanel(slug, { status = false } = {}) {
+  const p = document.createElement("p");
+  if (status) p.setAttribute("role", "status");
+  p.textContent = "What would you like to do next?";
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  row.append(...nextSteps(slug).map(({ href, text, className }) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.className = className;
+    a.textContent = text;
+    return a;
+  }));
+  return [p, row];
 }
 
 /** Puts c=<slug> (and an optional via) into a link's query. The link keeps its own address and hash: page text never becomes its href. */

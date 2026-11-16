@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { describeStatus, getConfig, resetConfigCache, getStatus, register, localTicket, sendChat, applyAppLinks, renderStatusBadges, STATUS_POLL_MS } from "../js/companion-api.js";
+import { describeStatus, getConfig, resetConfigCache, getStatus, register, localTicket, sendChat, applyAppLinks, renderStatusBadges, signUp, STATUS_POLL_MS } from "../js/companion-api.js";
 import { validProfile } from "./helpers.mjs";
 
 const json = (obj, status = 200, headers = {}) => new Response(JSON.stringify(obj), { status, headers });
@@ -67,6 +67,22 @@ test("register: passes through api/local tickets from the server, otherwise gene
   assert.notEqual(a.token, b.token);
   assert.match(a.attendeeId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   assert.equal(a.expiresAt, "1970-01-02T00:00:00.000Z");
+});
+
+test("signUp: a 409 event_ended keeps its own code; any other 409 is still a sign-in problem", async () => {
+  const cases = [
+    [{ error: "event_ended" }, "event_ended"],
+    [{ error: "schedule_not_published" }, "schedule_not_published"],
+    [{ error: "already_registered" }, "already_registered"],
+    [{}, "already_registered"], // a 409 with no code: the old reading, unchanged
+  ];
+  for (const [body, expected] of cases) {
+    await withFetch(async () => json(body, 409), async () => {
+      const r = await signUp({ slug: "kubecon-na-2026", name: "KubeCon" }, validProfile());
+      assert.equal(r.source, "error");
+      assert.equal(r.error, expected, JSON.stringify(body));
+    });
+  }
 });
 
 test("sendChat: validates the response, retries a 429 once, rejects when the endpoint is missing", async () => {

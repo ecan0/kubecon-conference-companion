@@ -47,6 +47,13 @@ main > section.sx-sec > .wrap.grid { display: flex; flex-direction: column; alig
 #conferences .finder .ui-win__bar { flex: none; }
 .finder__count { margin: 0; font: 500 var(--t-small)/1 var(--font-mono); color: var(--u-text-2); white-space: nowrap; }
 .finder__fields { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); padding: var(--s-4) var(--s-4) 0; }
+.finder__filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-4) var(--s-4) 0; }
+.finder__filters[hidden], .finder__km[hidden], .finder__hint[hidden] { display: none; }
+.finder__toggle { min-height: 44px; padding: 0 var(--s-3); border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--t-small); cursor: pointer; }
+.finder__toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.finder__km { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t-small); color: var(--ink); }
+.finder__km select { min-height: 44px; background: var(--bg); }
+.finder__hint { margin: 0; padding: var(--s-2) var(--s-4) 0; font-size: var(--t-small); color: var(--u-text-2); }
 .finder .field { gap: var(--s-2); }
 .finder .field label { font-size: var(--t-small); font-weight: 500; color: var(--ink); }
 .finder .field :is(input, select) { width: 100%; background: var(--bg); }

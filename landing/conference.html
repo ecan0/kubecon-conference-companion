@@ -70,10 +70,14 @@
         <div class="cc-reg">
           <div class="cc-reg__main">
             <p class="hero__kicker cc-hud"><span class="cc-hud__n">01 / 04</span></p>
-            <h1 id="hero-h">Register for <span data-c="name">Loading…</span></h1>
-            <p class="hero__lead"><time data-c="date"></time>, <span data-c="venue">Loading…</span>, <span data-c="city">Loading…</span>. Register in a chat for a schedule built from your interests and a QR ticket for the doors.</p>
+            <h1 id="hero-h" data-enter-whole><span data-c-verb>Register for</span> <span data-c="name">Loading…</span></h1>
+            <p class="hero__lead"><time data-c="date"></time>, <span data-c="venue">Loading…</span>, <span data-c="city">Loading…</span><span data-pitch>. Register in a chat for a schedule built from your interests and a QR ticket for the doors.</span></p>
             <p class="cc-demo" data-demo-note hidden>Demo event: its details are invented for this mockup.</p>
-            <p class="cc-notice" role="status" data-reg-gate hidden></p>
+            <div class="cc-notice" role="status" data-reg-gate hidden></div>
+            <div class="cc-ticket" data-ticket hidden>
+              <canvas data-ticket-qr role="img" aria-label="Your ticket QR code"></canvas>
+              <dl data-ticket-fields></dl>
+            </div>
             <div class="cc-missing" data-missing hidden>
               <p>That address does not match a conference we know. Pick one from the list instead.</p>
               <div class="btn-row"><a class="btn btn--primary" href="index.html#conferences">Find a conference</a></div>

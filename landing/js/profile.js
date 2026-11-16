@@ -3,7 +3,8 @@
 // The first half of the file is pure (tested in test/profile-page.test.mjs); the DOM part runs only in a page.
 
 import { avatarParam, avatarLook, drawAvatar, readAvatar, writeAvatar, PALETTE } from "./avatar.js";
-import { PROVIDERS, providerName, startUrl, fetchProviders, readLinked, writeLinked, unlinkProvider, initials } from "./accounts.js";
+import { PROVIDERS, providerName, startUrl, fetchProviders, readLinked, writeLinked, unlinkProvider, initials, SWITCH_WARNING } from "./accounts.js";
+import { sessionToken } from "./companion-api.js";
 
 export const KEPT_PROFILE_KEY = "cc.kept-profile.v1";
 export const REGISTRATIONS_KEY = "cc.registrations.v1";
@@ -37,6 +38,11 @@ export function addRegistration(list, slug, registeredAt = new Date().toISOStrin
   const rows = parseRegistrations(list);
   if (!slug || rows.some((r) => r.slug === slug)) return rows;
   return [...rows, { slug, registeredAt }];
+}
+
+/** True when this browser registered for the conference (demo sample rows do not count). Never throws. */
+export function registeredHere(slug, raw = (() => { try { return localStorage.getItem(REGISTRATIONS_KEY); } catch { return null; } })()) {
+  return Boolean(slug) && parseRegistrations(raw ?? []).some((r) => r.slug === slug && r.sample !== true);
 }
 
 const datesOf = (reg, c) => ({
@@ -146,9 +152,9 @@ export function appTicketUrl({ slug, name, role, interests, avatar } = {}) {
 
 // ---- "Delete my data"
 /** localStorage keys this site writes about a visitor. */
-export const LOCAL_DATA_KEYS = [KEPT_PROFILE_KEY, REGISTRATIONS_KEY, "cc.linked.v1", "cc.avatar.v1", SHARES_KEY];
-/** sessionStorage: the attendee token, the offline-schedule session, and chat transcripts (prefix). */
-export const SESSION_DATA_KEYS = ["cc.token", "cc.offline-session"];
+export const LOCAL_DATA_KEYS = [KEPT_PROFILE_KEY, REGISTRATIONS_KEY, "cc.linked.v1", "cc.avatar.v1", SHARES_KEY, "cc.token", "cc.token.expiresAt"];
+/** sessionStorage: the offline-schedule session (per tab) and chat transcripts (prefix). The attendee token is in localStorage. */
+export const SESSION_DATA_KEYS = ["cc.offline-session"];
 export const SESSION_DATA_PREFIXES = ["cc.chat.v1."];
 
 /**
@@ -424,6 +430,7 @@ async function start() {
         info.append(el("p", "pf-acc__state", "Not linked"));
         const a = el("a", "btn btn--secondary", `Link ${p.name}`);
         a.href = startUrl(p.id, "/site/profile.html");
+        if (sessionToken()) a.addEventListener("click", (event) => { if (!confirm(SWITCH_WARNING)) event.preventDefault(); });
         li.append(info, a);
       } else {
         info.append(el("p", "pf-acc__state", "Not available here"));
@@ -445,7 +452,7 @@ async function start() {
       confirmBtn.disabled = true;
       let status = "no-token";
       let token = null;
-      try { token = sessionStorage.getItem("cc.token"); } catch { /* storage unavailable */ }
+      try { token = localStorage.getItem("cc.token"); } catch { /* storage unavailable */ }
       if (token) {
         status = null;
         try { const r = await fetch("/api/me", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); status = r.status; } catch { status = null; }
@@ -454,7 +461,7 @@ async function start() {
       if (plan.clearLocal) {
         for (const k of LOCAL_DATA_KEYS) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
         try {
-          for (const k of SESSION_DATA_KEYS) if (k !== "cc.token" || plan.clearToken) sessionStorage.removeItem(k);
+          for (const k of SESSION_DATA_KEYS) sessionStorage.removeItem(k);
           for (const k of Object.keys(sessionStorage)) if (SESSION_DATA_PREFIXES.some((pre) => k.startsWith(pre))) sessionStorage.removeItem(k);
         } catch { /* ignore */ }
       }

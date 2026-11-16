@@ -20,20 +20,12 @@ if (section) {
   const slug = params.get("c") || section.dataset.conference || "";
   const log = $("[data-chat-log]", section);
   const input = $("[data-chat-input]", section);
-  const modeEl = $("[data-chat-mode]", section);
   const waitEl = $("[data-chat-wait]", section);
   const ticketEl = $("[data-chat-ticket]", section);
   const verb = $("[data-reg-verb]");
 
-  // ---------------------------------------------------------------- the mode line: says what is answering, nothing more
-  const MODE_TEXT = { claude: "Answers by Claude Haiku", scripted: "Scripted questions", none: "Choose a conference first" };
-  // js/chat.js sets data-gate="not-published" when the conference has no published talks: registration is closed.
-  const GATE_TEXT = { "not-published": "Registration is not open until this conference publishes its talks" };
-  const STATE_TEXT = { loading: "Starting the chat" };
   function syncStatus() {
-    const mode = section.dataset.mode;
     const state = section.dataset.state;
-    if (modeEl) modeEl.textContent = GATE_TEXT[section.dataset.gate] ?? MODE_TEXT[mode] ?? STATE_TEXT[state] ?? "Starting the chat";
     if (waitEl) {
       let text = "";
       if (state === "waiting") text = $("[data-pending]", log) ? "The host is typing" : "Registering you";
@@ -141,7 +133,7 @@ if (section) {
     a.textContent = "Open in the app";
     a.setAttribute("data-app-open", "");
     a.href = appTicketUrl({ slug, name: p.name, role: p.role, interests: p.interests, avatar: readAvatar() });
-    next.insertBefore(a, $(".reg__again", next));
+    next.insertBefore(a, $(".reg__more", next));
   }
 
   function onDone(detail) {
@@ -202,7 +194,7 @@ if (section) {
   const via = params.get("via");
   const linkedVia = via && VIA[via] ? readLinked()[via] : null;
   if (viaEl && linkedVia) {
-    viaEl.textContent = `Signed in as ${linkedVia.displayName} via ${providerName(via)}. We will start with this name; tell the host if you want to change it.`;
+    viaEl.textContent = `Signed in as ${linkedVia.displayName} via ${providerName(via)}.`;
     viaEl.setAttribute("data-signed", "");
     viaEl.hidden = false;
   } else if (viaEl && via && (VIA[via] || via === "qr")) {

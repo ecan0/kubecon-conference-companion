@@ -4,9 +4,11 @@
 // Message text (the visitor's and the model's) only ever goes through textContent.
 
 import { drawQr } from "./qr.js";
-import { getConference, loadConferences } from "./conferences.js";
+import { getConference, hasEnded, loadConferences, nextSteps, registeredPanel } from "./conferences.js";
+import { registeredHere } from "./profile.js";
 import { completeSignup, fetchAccessToken, getConferenceTopics, onReady, sendChat, sessionToken } from "./companion-api.js";
-import { LIMITS, VIA_VALUES, createSelection, parseConfirmChoice, scriptedTurn, validateKnown, validateProfile } from "./chat-script.js";
+import { FORMATS_QUESTION, LIMITS, VIA_VALUES, createSelection, parseConfirmChoice, scriptedTurn, validateKnown, validateProfile } from "./chat-script.js";
+import { showSavedTicket } from "./saved-ticket.js";
 
 export const MAX_INPUT_CHARS = 1000;
 const STORE_PREFIX = "cc.chat.v1.";
@@ -105,26 +107,48 @@ function showChooser(section) {
 function notPublishedNotice(conference) {
   return {
     text: `Registration opens when ${conference.name} publishes its talks.`,
-    link: conference.url
-      ? { href: conference.url, text: "Open the official event site" }
-      : { href: "/site/#conferences", text: "Open the conference list" },
+    links: [
+      conference.url
+        ? { href: conference.url, text: "Open the official event site" }
+        : { href: "/site/#conferences", text: "Open the conference list" },
+    ],
   };
 }
 
-/** No published talks: the server would refuse the registration, so the conversation does not start. */
-function showNotPublished(section, conference) {
-  const { text, link } = notPublishedNotice(conference);
+/**
+ * The notice for an event that has ended: registration is closed for good. Its talks stay readable, and its page
+ * stays one link away. The server may decide a little earlier than the page does (409 event_ended), which is why
+ * this copy is also what a refused sign-up shows.
+ */
+function endedNotice(conference, { talks = false } = {}) {
+  const links = [];
+  if (talks) links.push({ href: `/search?c=${encodeURIComponent(conference.slug)}`, text: "Browse the talks" });
+  links.push({ href: `conference.html?c=${encodeURIComponent(conference.slug)}`, text: "Open the event page" });
+  return { text: `${conference.name} has ended, so registration is closed.`, links };
+}
+
+function noticeAnchor({ href, text }) {
   const a = document.createElement("a");
-  a.href = link.href;
+  a.href = href;
   a.rel = "noopener";
-  a.textContent = link.text;
+  a.textContent = text;
+  return a;
+}
+
+/**
+ * The one line of a blocked registration: the sentence, then its links. It goes into the page's gate when there is
+ * one, and into the log otherwise (the register page hides the log once the chat is done, so its notice needs a
+ * place of its own).
+ */
+function placeNotice(section, { text, links }) {
+  const nodes = [text];
+  for (const link of links) nodes.push(" ", noticeAnchor(link));
   const gate = section.querySelector("[data-chat-gate]");
   const log = section.querySelector("[data-chat-log]");
   if (gate) {
-    // The register page hides the log once the chat is done: its notice needs a place of its own.
     const p = document.createElement("p");
     p.setAttribute("role", "status");
-    p.append(`${text} `, a, ".");
+    p.append(...nodes);
     gate.hidden = false;
     gate.replaceChildren(p);
   } else if (log) {
@@ -134,14 +158,67 @@ function showNotPublished(section, conference) {
     li.className = "chat-msg";
     li.dataset.role = "assistant";
     const p = document.createElement("p");
-    p.append(`${text} `, a, ".");
+    p.append(...nodes);
     li.append(p);
     log.append(li);
   }
+}
+
+/** No published talks: the server would refuse the registration, so the conversation does not start. */
+function showNotPublished(section, conference) {
+  placeNotice(section, notPublishedNotice(conference));
   const form = section.querySelector("[data-chat-form]");
   if (form) form.hidden = true;
   section.dataset.mode = "none";
   section.dataset.gate = "not-published";
+  section.dataset.state = "done";
+}
+
+/** The register page's heading verb: once nothing can be signed up for, the heading is the event name alone. */
+function hideRegisterVerb() {
+  const verb = document.querySelector("[data-reg-verb]");
+  if (verb) verb.hidden = true;
+}
+
+/** Ended: registration is closed for good, so the conversation does not start. The talks and the event page stay open. */
+function showEnded(section, conference, { talks = false } = {}) {
+  placeNotice(section, endedNotice(conference, { talks }));
+  hideRegisterVerb();
+  const form = section.querySelector("[data-chat-form]");
+  if (form) form.hidden = true;
+  section.dataset.mode = "none";
+  section.dataset.gate = "ended";
+  section.dataset.state = "done";
+}
+
+/** A profile is already set up in this browser: no second sign-up, just the next places to go. `registered` says this event is the one registered for. */
+async function showRegistered(section, conference, { registered = true } = {}) {
+  const ticketEl = section.querySelector("[data-chat-ticket]");
+  if (registered && ticketEl && await showSavedTicket(ticketEl, "[data-qr]")) {
+    const verb = document.querySelector("[data-reg-verb]");
+    if (verb) verb.textContent = "Your ticket for";
+    const form = section.querySelector("[data-chat-form]");
+    if (form) form.hidden = true;
+    section.dataset.mode = "none";
+    section.dataset.gate = "registered";
+    section.dataset.state = "done";
+    return;
+  }
+  const gate = section.querySelector("[data-chat-gate]");
+  if (gate) {
+    gate.hidden = false;
+    gate.replaceChildren(...registeredPanel(conference.slug, { status: true }));
+  } else {
+    placeNotice(section, { text: registered ? `You're registered for ${conference.name}.` : "Your profile is already set up in this browser.", links: nextSteps(conference.slug) });
+  }
+  if (registered) {
+    const verb = document.querySelector("[data-reg-verb]");
+    if (verb) verb.textContent = "You're registered for";
+  }
+  const form = section.querySelector("[data-chat-form]");
+  if (form) form.hidden = true;
+  section.dataset.mode = "none";
+  section.dataset.gate = "registered";
   section.dataset.state = "done";
 }
 
@@ -162,10 +239,6 @@ export async function bindChat(section) {
   const viaParam = params.get("via");
   const storeKey = STORE_PREFIX + slug;
   const via = VIA_VALUES.includes(viaParam) ? viaParam : null;
-  if (sessionToken()) {
-    location.replace("/schedule");
-    return;
-  }
   let linkedName = "";
   if (via && via !== "qr") {
     try {
@@ -186,9 +259,25 @@ export async function bindChat(section) {
   const conference = { slug, name: confInfo?.name ?? humanise(slug), url: confInfo?.url ?? "" };
   const conferenceTopics = confInfo?.topics ?? [];
 
+  // Registered here before, or a profile session in this browser (for any event): the next steps, never a second sign-up.
+  const heldTicket = storageGet(storeKey);
+  const alreadyHere = registeredHere(slug);
+  if (!(heldTicket && heldTicket.done) && (alreadyHere || sessionToken() !== null)) {
+    await showRegistered(section, conference, { registered: alreadyHere });
+    return;
+  }
+
+  // The talks list and the ended state decide whether a conversation can start at all: both reads happen before it.
+  const published = await getConferenceTopics(slug);
+  const publishedTalks = Boolean(published && published.topics.length);
+  // Ended wins over not-published: an event can be over and never have published talks (the hackathon), and then it
+  // has ended. The catalogue's dates are the only thing this check needs, so it holds when the API cannot answer.
+  if (confInfo && hasEnded(confInfo)) {
+    showEnded(section, conference, { talks: publishedTalks });
+    return;
+  }
   // Registration is open only for a conference whose talks are published: an empty topic list is the public signal
   // (the server answers 409 schedule_not_published). A route that cannot answer (null) starts the chat as before.
-  const published = await getConferenceTopics(slug);
   if (published && published.topics.length === 0) {
     showNotPublished(section, conference);
     return;
@@ -397,8 +486,7 @@ export async function bindChat(section) {
         pair(dl, "Role", profile.role);
         pair(dl, "Interests", profile.interests.join(", "));
         if (profile.goal) pair(dl, "Goal", profile.goal);
-        pair(dl, "Ticket", ticket.source === "api" ? "Registered" : "Demo ticket");
-        if (ticket.source === "api" && ticket.scheduleSaved) pair(dl, "Schedule", "Ready");
+        if (ticket.source !== "api") pair(dl, "Ticket", "Demo ticket");
         const exp = formatExpiry(ticket.expiresAt);
         if (exp) pair(dl, "Expires", exp);
       }
@@ -430,19 +518,16 @@ export async function bindChat(section) {
     // On the site this is the real sign-up; preview registration uses its own endpoint.
     const ticket = await completeSignup(conference, profile, { returning: Boolean(s.known) });
     if (ticket.source === "error") {
-      if (ticket.error === "schedule_not_published") {
-        // The server refused: this conference has no published talks. Same notice as the pre-chat gate.
-        const { text, link } = notPublishedNotice(conference);
-        const line = addMessage("assistant", text);
-        s.messages.push({ role: "assistant", content: text });
-        const a = document.createElement("a");
-        a.href = link.href;
-        a.rel = "noopener";
-        a.textContent = link.text;
-        line.append(a);
+      if (ticket.error === "schedule_not_published" || ticket.error === "event_ended") {
+        // The server refused: no published talks, or an event that has ended (it may decide a little earlier than
+        // the page does). Same notice as the pre-chat gate.
+        const notice = ticket.error === "event_ended" ? endedNotice(conference, { talks: publishedTalks }) : notPublishedNotice(conference);
+        const line = addMessage("assistant", notice.text);
+        s.messages.push({ role: "assistant", content: notice.text });
+        for (const link of notice.links) line.append(noticeAnchor(link));
         s.ticket = null;
         s.error = ticket.error;
-        section.dataset.gate = "not-published";
+        section.dataset.gate = ticket.error === "event_ended" ? "ended" : "not-published";
         persist();
         lock(true);
         setState("done");
@@ -545,6 +630,9 @@ export async function bindChat(section) {
     const typed = input.value.replace(/\s+/g, " ").trim();
     const text = sel ? sel.message(typed) : typed;
     if (!text) {
+      // An empty answer to the talk-formats question means no preference.
+      const last = s.messages.at(-1);
+      if (!sel && last?.role === "assistant" && last.content === FORMATS_QUESTION) { send("none"); return; }
       if (sel) say(s.ask.kind === "topics" ? "Pick at least one topic, or type your answer." : "Pick an option, or type your answer.");
       return;
     }
@@ -564,22 +652,21 @@ export async function bindChat(section) {
     for (const m of s.messages) addMessage(m.role, m.content);
     if (saved.mode === "claude" || saved.mode === "scripted") setMode(saved.mode);
     const checked = saved.done ? validateProfile(saved.profile) : null;
-    const savedError = ["already_registered", "identity_claim_invalid", "registration_failed", "schedule_not_published"].includes(saved.error) ? saved.error : null;
+    const savedError = ["already_registered", "identity_claim_invalid", "registration_failed", "schedule_not_published", "event_ended"].includes(saved.error) ? saved.error : null;
     if (checked?.ok && savedError) {
       s.done = true;
       s.profile = checked.profile;
       s.error = savedError;
       if (savedError !== "registration_failed") {
         const line = log.lastElementChild;
-        const target = FAILURE_LINKS[savedError];
-        if (line && target) {
-          const link = document.createElement("a");
-          link.href = target.href;
-          link.textContent = target.text;
-          line.append(link);
-        }
+        /* the ended link needs this page's slug, so it is not in the static table */
+        const target = savedError === "event_ended"
+          ? { href: `conference.html?c=${encodeURIComponent(slug)}`, text: "Open the event page" }
+          : FAILURE_LINKS[savedError];
+        if (line && target) line.append(noticeAnchor(target));
       }
       if (savedError === "schedule_not_published") section.dataset.gate = "not-published";
+      if (savedError === "event_ended") { section.dataset.gate = "ended"; hideRegisterVerb(); }
       lock(true);
       setState("done");
       return;

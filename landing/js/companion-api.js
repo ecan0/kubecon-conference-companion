@@ -185,29 +185,82 @@ export async function register(conference, profile, { returning = false } = {}) 
 
 // ------------------------------------------------- real-backend sign-up (site)
 
-/** sessionStorage key the React app keeps the attendee token under (web/src/api.ts TOKEN_KEY). */
+/** localStorage key the React app keeps the attendee token under (web/src/api.ts TOKEN_KEY); shared by every tab. */
 export const TOKEN_KEY = "cc.token";
-const OFFLINE_KEY = "cc.offline-session"; // web/src/offline.ts
-export const DEFAULT_EXPERIENCE = "intermediate";
+const EXPIRES_KEY = "cc.token.expiresAt"; // web/src/api.ts EXPIRES_KEY: the server's expiry, past which the token is dropped
+const VIA_KEY = "cc.token.via"; // web/src/api.ts VIA_KEY: the provider a GitHub session came from; absent for a chat registration
+const OFFLINE_KEY = "cc.offline-session"; // web/src/offline.ts (sessionStorage: the offline schedule is per tab)
 
 /**
- * Stores the attendee token exactly like setToken() in web/src/api.ts, so the React pages are signed in
- * afterwards. When the token changes, the offline-schedule session is reset like resetOfflineSession() does.
+ * Stores the attendee token exactly like setToken() in web/src/api.ts, so the React pages are signed in in every tab.
+ * When the token changes, the offline-schedule session is reset like resetOfflineSession() does.
  */
-export function storeToken(token) {
+export function storeToken(token, expiresAt) {
   try {
-    const previous = sessionStorage.getItem(TOKEN_KEY);
+    const previous = localStorage.getItem(TOKEN_KEY);
     if (token !== previous) {
       const session = sessionStorage.getItem(OFFLINE_KEY);
       sessionStorage.removeItem(OFFLINE_KEY);
       if (session) navigator.serviceWorker?.controller?.postMessage({ type: "forget-schedule", session });
     }
-    sessionStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_KEY, token);
+    if (expiresAt) localStorage.setItem(EXPIRES_KEY, expiresAt);
+    else localStorage.removeItem(EXPIRES_KEY);
+    localStorage.removeItem(VIA_KEY); // a chat registration has no provider
     return true;
   } catch {
     return false; // storage unavailable: the ticket still works, the app pages need a new sign-in
   }
 }
+
+export function sessionToken() {
+  try {
+    const expiresAt = localStorage.getItem(EXPIRES_KEY);
+    if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(EXPIRES_KEY);
+      localStorage.removeItem(VIA_KEY);
+      return null;
+    }
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** The provider the live session came from ("github"), or null: a chat registration has none. */
+export function sessionVia() {
+  if (sessionToken() === null) return null;
+  try { return localStorage.getItem(VIA_KEY); } catch { return null; }
+}
+
+/** The sign-in claim a new GitHub account left in this tab (15 minutes), or null when none is pending or it has expired. */
+export function pendingClaim() {
+  try {
+    const claim = JSON.parse(sessionStorage.getItem("cc.identity-claim") || "null");
+    return claim && typeof claim.token === "string" && Date.parse(claim.expiresAt) > Date.now() ? claim : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Signs this browser out, exactly like signOut() in web/src/api.ts: the token goes from every tab, and the worker
+ * forgets the copied schedule. The linked display profile in localStorage stays.
+ */
+export function signOut() {
+  try {
+    const session = sessionStorage.getItem(OFFLINE_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(EXPIRES_KEY);
+    localStorage.removeItem(VIA_KEY);
+    sessionStorage.removeItem(OFFLINE_KEY);
+    if (session) navigator.serviceWorker?.controller?.postMessage({ type: "forget-schedule", session });
+  } catch {
+    // storage unavailable: nothing was stored
+  }
+}
+export const DEFAULT_EXPERIENCE = "intermediate";
 
 /** Chat profile -> RegisterRequest (web/shared contract). Registering implies both consents; email is never collected. */
 export function toRegisterRequest(profile, conference) {
@@ -230,7 +283,7 @@ export function toRegisterRequest(profile, conference) {
 
 /** Chat profile -> OnboardingAnswers (shared contract). */
 export function toOnboardingAnswers(profile) {
-  const freeText = [profile.role, profile.formats && `formats: ${profile.formats}`].filter(Boolean).join("; ").slice(0, 1000);
+  const freeText = [profile.role, profile.formats && profile.formats !== "none" && `formats: ${profile.formats}`].filter(Boolean).join("; ").slice(0, 1000);
   return {
     topics: profile.interests,
     experience: DEFAULT_EXPERIENCE,
@@ -272,25 +325,6 @@ export async function fetchAccessToken(attendeeToken = sessionToken()) {
   return { token: j.token, expiresAt: j.expiresAt };
 }
 
-export function sessionToken() {
-  try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-
-/**
- * Signs out of this tab, exactly like signOut() in web/src/api.ts: the token is tab-scoped, so only the session keys
- * go (and the worker forgets the copied schedule). The linked display profile in localStorage stays for "Sign in again".
- */
-export function signOut() {
-  try {
-    const session = sessionStorage.getItem(OFFLINE_KEY);
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(OFFLINE_KEY);
-    if (session) navigator.serviceWorker?.controller?.postMessage({ type: "forget-schedule", session });
-  } catch {
-    // storage unavailable: nothing was stored
-  }
-}
-
 /**
  * Finishes a sign-up against the real API (site mode): register, store the token for the React app, build the
  * personal schedule (onboarding -> search -> save, the same three calls as the Onboarding page), then fetch the
@@ -308,8 +342,10 @@ export async function signUp(conference, profile, { returning = false } = {}) {
   } catch (error) {
     if (error?.status === 409) {
       try { sessionStorage.removeItem("cc.identity-claim"); } catch { /* storage unavailable */ }
-      // 409 also covers a conference with no published talks: that is not a sign-in problem, so it stays separate.
-      return { source: "error", error: error?.code === "schedule_not_published" ? "schedule_not_published" : "already_registered" };
+      // 409 covers three refusals: a conference with no published talks, an event that has ended (the server may
+      // decide a little earlier than the page does), and a sign-in problem. Only the last one is about the account.
+      const code = error?.code === "schedule_not_published" || error?.code === "event_ended" ? error.code : "already_registered";
+      return { source: "error", error: code };
     }
     if (error?.code === "invalid_identity_claim") {
       try { sessionStorage.removeItem("cc.identity-claim"); } catch { /* storage unavailable */ }
@@ -321,7 +357,7 @@ export async function signUp(conference, profile, { returning = false } = {}) {
     return localTicket();
   }
   const attendeeToken = reg.token;
-  storeToken(attendeeToken);
+  storeToken(attendeeToken, reg.expiresAt);
   try { sessionStorage.removeItem("cc.identity-claim"); } catch { /* storage unavailable */ }
   const ticket = { source: "api", attendeeId: reg.attendeeId, token: null, expiresAt: reg.expiresAt, qrExpiresAt: null, scheduleSaved: false };
 
@@ -514,12 +550,29 @@ export async function sendChat({ conference, via, messages, known = null }) {
 /** A catalogue slug as the API validates it (shared/src/contract.ts): a malformed ?c= is never copied onto a link. */
 const CONFERENCE_SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+/** The conference this browser most recently registered for (demo samples do not count), so a page opened without ?c= keeps the visitor's event. */
+function lastRegisteredSlug() {
+  try {
+    const list = JSON.parse(localStorage.getItem("cc.registrations.v1") || "[]");
+    const real = (Array.isArray(list) ? list : []).filter((r) => r && typeof r.slug === "string" && r.sample !== true && CONFERENCE_SLUG.test(r.slug));
+    real.sort((a, b) => String(b.registeredAt ?? "").localeCompare(String(a.registeredAt ?? "")));
+    return real[0]?.slug ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** The conference of the newest registration, while this browser holds a live session; "" otherwise. */
+export function currentRegistrationSlug() {
+  return sessionToken() !== null ? lastRegisteredSlug() : "";
+}
+
 export async function applyAppLinks(root = document) {
   const links = root.querySelectorAll("a[data-app-link]");
   if (!links.length) return;
   const { appBase } = await getConfig();
   const slug = conferenceSlug();
-  const carry = CONFERENCE_SLUG.test(slug) ? slug : "";
+  const carry = CONFERENCE_SLUG.test(slug) ? slug : lastRegisteredSlug();
   for (const a of links) {
     const p = a.dataset.appLink || "/";
     const href = appBase.replace(/\/+$/, "") + (p.startsWith("/") ? p : `/${p}`); // appBase "" on the site: "/schedule"

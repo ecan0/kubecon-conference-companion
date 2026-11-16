@@ -51,7 +51,7 @@
     </nav>
     <div class="nav__actions">
       <a class="btn btn--github" data-signin="github" data-return="/site/profile.html" href="/api/auth/github/start" hidden>Sign in with GitHub</a>
-      <button class="btn" type="button" data-signout hidden>Sign out</button>
+      <button class="btn btn--secondary" type="button" data-signout hidden>Sign out</button>
     </div>
     <button class="nav__toggle" type="button" aria-expanded="false" aria-label="Menu"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   </div>
@@ -62,13 +62,15 @@
     <div class="wrap"><div class="hero-text reg__grid">
       <div class="reg__panel">
         <div class="reg__head">
-          <h1 id="hero-h"><span data-reg-verb>Chat sign-up for</span> <span data-c="name">Loading…</span></h1>
+          <h1 id="hero-h" data-enter-whole><span data-reg-verb>Chat sign-up for</span> <span data-c="name">Loading…</span></h1>
           <p class="hero__kicker"><span data-status-badge></span></p>
         </div>
         <p class="reg__via" data-reg-via hidden></p>
+        <div class="reg__github" data-signin-group hidden>
+          <a class="btn btn--github" data-signin="github" href="/api/auth/github/start" hidden>Continue with GitHub</a>
+        </div>
         <section data-chat data-venue-shot="host" data-venue-side="left" data-venue-dim="0.35" aria-label="Registration chat">
           <div class="chat-bar">
-            <p class="chat-mode" data-chat-mode>Starting the chat</p>
             <p class="chat-wait" data-chat-wait></p>
           </div>
           <ol data-chat-log aria-live="polite" aria-label="Registration chat messages" tabindex="0"><li class="chat-msg" data-role="assistant" data-pending data-boot aria-hidden="true"><p>…</p></li></ol>
@@ -77,7 +79,7 @@
             <button class="btn btn--secondary" type="button" data-chat-restart>Start again</button>
           </div>
           <div data-chat-choices hidden></div>
-          <p class="chat-gate" role="status" data-chat-gate hidden></p>
+          <div class="chat-gate" data-chat-gate hidden></div>
           <form data-chat-form>
             <label for="chat-answer">Your answer</label>
             <input id="chat-answer" type="text" data-chat-input autocomplete="off" enterkeyhint="send">
@@ -87,12 +89,12 @@
             <span class="pxframe"><span class="pxframe__in"><canvas data-qr data-qr-scale="5" role="img" aria-label="Your ticket QR code"></canvas></span></span>
             <dl data-ticket-fields></dl>
             <div class="reg__next">
-              <a class="btn btn--primary" data-app-link="/schedule" href="http://localhost:5173/schedule">See your schedule</a>
-              <a class="btn btn--secondary" data-c-link="conference.html" href="conference.html">See the conference page</a>
-              <button class="link reg__again" type="button" data-chat-restart>Start again</button>
+              <a class="btn btn--primary" data-app-link="/schedule" href="http://localhost:5173/schedule">View your schedule</a>
+              <a class="btn btn--secondary" data-app-link="/onboarding" href="http://localhost:5173/onboarding">Find talks</a>
+              <a class="link reg__more" href="index.html#conferences">Find more conferences</a>
             </div>
           </div>
-          <p class="reg__privacy">No questions about health, politics or identity. Your answers are kept for future conferences; organisers see only aggregate counts. <a href="index.html#privacy">What is kept and how to delete it</a></p>
+          <p class="reg__privacy">Organisers see totals only. Your answers stay for your next conference. <a href="profile.html">Manage your data</a></p>
         </section>
       </div>
     </div></div>

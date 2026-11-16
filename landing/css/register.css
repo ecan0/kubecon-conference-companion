@@ -162,6 +162,8 @@ main > section.hero.reg > .wrap { height: 100%; display: block; }
 .reg .chat-error p { margin: 0; font-size: var(--t-body); line-height: 1.5; color: var(--ink); }
 .reg .chat-error .btn { justify-self: start; }
 .reg [data-chat][data-state="error"] .chat-error { display: grid; }
+.reg .chat-gate > p { margin: 0; }
+.reg .chat-gate .btn-row { margin: var(--s-3) 0 0; }
 
 /* ------------------------------------------------------------ done: the ticket replaces the transcript (the host's last line was read out live) */
 .reg [data-chat][data-state="done"] [data-chat-log], .reg [data-chat][data-state="done"] .chat-wait { display: none; }
@@ -197,7 +199,7 @@ main > section.hero.reg > .wrap { height: 100%; display: block; }
 .reg [data-ticket-fields] .tk-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
 .reg [data-ticket-fields] .tk-chip { padding: 4px 12px; background: color-mix(in oklab, var(--accent) 14%, var(--surface)); border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent); color: var(--ink); font-size: var(--t-small); line-height: 1.4; font-weight: 500; }
 .reg .reg__next { grid-area: next; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-4); }
-.reg .reg__again { appearance: none; background: none; border: 0; padding: 0 var(--s-2); min-height: 44px; font: inherit; font-size: var(--t-body); color: var(--ink); cursor: pointer; }
+.reg .reg__more { display: inline-flex; align-items: center; padding: 0 var(--s-2); min-height: 44px; font-size: var(--t-body); color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ------------------------------------------------------------ the footer: one slim line (legal left, the two scene controls right) */
 html:has(.reg) footer.reg-foot { height: var(--foot); background: var(--bg); border-top: 1px solid var(--line); }
@@ -235,7 +237,7 @@ html:has(.reg) footer.reg-foot { height: var(--foot); background: var(--bg); bor
   .reg [data-chat][data-state="done"] .reg__privacy, .reg [data-chat][data-state="done"] .chat-bar { display: none; }
   .reg [data-chat-ticket] .pxframe__in { padding: var(--s-2); }
   .reg .reg__next { gap: var(--s-2) var(--s-3); }
-  .reg .reg__again { flex: 1 1 100%; text-align: left; padding: 0; }
+  .reg .reg__more { flex: 1 1 100%; padding: 0; }
   .reg .reg__next .btn { flex: 1 1 100%; }
 }
 /* the keyboard is up, or the screen is short (Android resizes the page for the keyboard; iOS does not, so register.js sets data-kbd from the visual viewport):
