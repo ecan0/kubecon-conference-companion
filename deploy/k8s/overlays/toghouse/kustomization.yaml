@@ -11,10 +11,10 @@ resources:
 images:
   - name: cc-api
     newName: ghcr.io/ecan0/conference-companion-api
-    digest: sha256:2513545894d38c4ad8a4f8d1e03ae976f27c6bbb145b0298e2d2707860b79062
+    digest: sha256:4792ee5f007ed57eb40d4f7142770a690fb21a47b22f0f82790878d3e24f5f1e
   - name: cc-web
     newName: ghcr.io/ecan0/conference-companion-web
-    digest: sha256:b98635bdf937ec07428d65b0dd1419a7c6bcf288d088825023c619702cd98877
+    digest: sha256:15dd70af04750c9f6eebea1da90c941668017b3d2a103047a0c78bb3e52f545e
 patches:
   # This environment trusts two proxies: the web Service and its public tunnel.
   - target: {kind: ConfigMap, name: companion-app-config}
