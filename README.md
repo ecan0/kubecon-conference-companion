@@ -33,12 +33,13 @@ The [native iOS companion](ios/README.md) is a separate Xcode build. Its indoor 
 
 Source: [docs/architecture.drawio](docs/architecture.drawio).
 
-- **Web:** React 18, TypeScript and Vite, served by nginx, which proxies `/api`. The landing scene uses vanilla ES modules and Three.js.
-- **API:** Node.js 22 and Fastify 5, with Zod validation, signed JWT sessions and QR tokens.
-- **Data:** PostgreSQL with `pgvector` and `pg_trgm`. Hybrid search runs in SQL ([docs/database.md](docs/database.md)).
+- **Web:** React 19, React Router 7, TypeScript 7 and Vite 8, served by nginx 1.31, which proxies `/api`. The landing scene uses vanilla ES modules and Three.js r169.
+- **API:** Node.js 26 and Fastify 5, with Zod 4 validation, `jose` 6 for signed JWT sessions and QR tokens, and `pg` 8 for the database. Embeddings: multilingual-e5-small through `@huggingface/transformers` 4.
+- **Data:** PostgreSQL 17 on Supabase, with `pgvector` 0.8 and `pg_trgm` 1.6. Hybrid search runs in SQL. Row-level security is on for the app tables, and the Supabase Data API has no access ([docs/database.md](docs/database.md)).
 - **Jobs:** Optional retention and interest-cluster CronJobs, using the API image.
-- **Hosting:** Portable Kubernetes manifests. The environment supplies the database, ingress, TLS and secrets.
-- **Telemetry:** Optional OpenTelemetry. Allowlists keep out attendee IDs and free text.
+- **Hosting:** Portable Kubernetes manifests. The environment supplies the database, ingress, TLS and secrets. The example overlay uses `cloudflared` 2026.11.0.
+- **Telemetry:** Optional OpenTelemetry (JS API 1.10). Allowlists keep out attendee IDs and free text.
+- **Tests:** Vitest 5. API tests run real SQL on PGlite 0.5.
 
 ## Run it locally
 
@@ -85,7 +86,7 @@ Container images for the API and web are built from `api/Dockerfile` and `web/Do
 - **Stored:** profiles, schedules, room access and hashed GitHub links live in PostgreSQL. Browser-local data stays separate.
 - **Retention:** profiles are kept until deleted (`DELETE /api/me`). Set `ATTENDEE_RETENTION_HOURS` for timed deletion ([docs/retention.md](docs/retention.md)).
 - **Access:** attendee sessions last eight hours. Room QR tokens last about 60 seconds and are re-checked on every scan. Organizers use a separate key.
-- **Security:** database TLS certificates are verified. In-cluster TLS and ingress are set by the environment.
+- **Security:** database TLS certificates are verified. Row-level security blocks the Supabase Data API, and attendee-linked rows are deleted with their attendee. In-cluster TLS and ingress are set by the environment.
 - **Availability:** the example runs one API and one web replica. It is not a high-availability setup.
 - **Demo status:** hardening work remains (stored opt-out handling, deletion errors, cleanup of expired records when timed retention is off). This is a demo, not production-ready.
 
