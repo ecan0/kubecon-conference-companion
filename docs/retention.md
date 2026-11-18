@@ -36,11 +36,13 @@ not only on `expires_at`), so announce it before doing it.
 `attendees`, the saved schedule in `schedules`, the room entitlement in
 `entitlements`, and any provider identity links in `identities`. It answers
 `204` with no body. The profile is deleted last, so a `503` (storage error)
-leaves the account intact and the same call can be retried. Once the profile is
-gone the token grants nothing: `GET /api/me`, `POST /api/access/token` and a
-second `DELETE /api/me` answer `401` (the second call also removes any stray
-schedule document). A QR door token already issued stops working at once
-because the scan checks the entitlement, which is gone.
+leaves the account intact and the same call can be retried. Foreign keys with
+`on delete cascade` also remove the schedule, entitlement and identity rows with
+the profile, so no row outlives its attendee. Once the profile is gone the token
+grants nothing: `GET /api/me` and `POST /api/access/token` answer `401`,
+`POST /api/schedule` answers `404` and stores nothing, and a second
+`DELETE /api/me` answers `404`. A QR door token already issued stops working at
+once because the scan checks the entitlement, which is gone.
 
 Aggregates are not edited by the request. The interest counts and clusters are
 recomputed by the existing jobs, so the attendee drops out of the counts on the
@@ -53,6 +55,7 @@ attendee ID is never logged, put on a span or returned.
 After building, run `npm run retention` (it reads `ATTENDEE_RETENTION_HOURS`
 from the environment, like the API; set it on the CronJob's ConfigMap
 `companion-app-config`, otherwise the job stays off). The API image also
+supports `node dist/retention-cli.js`. The job targets only `attendees`,
 `schedules`, `entitlements`, and `identities`; talk catalogs and aggregate interest clusters
 are kept. Identity link `expires_at` matches its attendee profile; without a
 timed retention setting, identities are kept alongside their profiles. With a
@@ -61,6 +64,10 @@ that many hours or whose `expires_at` has passed. The latter supports the
 existing strict schedule and entitlement mappings, which have no `created_at`
 field. Missing timestamps do not match; writers must always supply an expiry
 or creation timestamp.
+
+The job deletes from `schedules`, `entitlements` and `identities` before
+`attendees`. The cascade would otherwise remove child rows without counting
+them, and the reported count would be too low.
 
 The CronJob runs hourly (and, while retention is off, only removes already-expired rows), so cleanup can lag expiry by up to one hour. It uses
 the app's database connection (`DATABASE_URL`) and fails on any error
@@ -90,10 +97,8 @@ expired attendee fixture or receipt of its telemetry in Dash0.
   can justify, and a lawful basis for keeping profiles, before using the
   default. Until then, set `ATTENDEE_RETENTION_HOURS`.
 - `DELETE /api/me` does not revoke the stateless session token itself (at most
-  8 hours). `GET /api/me`, `POST /api/access/token` and a second delete reject
-  it because the profile is gone, but `POST /api/schedule` only checks the token
-  signature, so within that window it could save a new schedule document
-  for the deleted attendee (a second `DELETE /api/me` call removes it; the timed
-  job removes it too when retention is on).
+  8 hours). Every attendee-data route rejects it because the profile is gone.
+  `POST /api/schedule` checks that the attendee exists, and the
+  `schedules.attendee_id` foreign key blocks a save that races the delete.
 - The CronJob with a positive setting has not been run against a live cluster
   here; only the unit tests cover the purge path.

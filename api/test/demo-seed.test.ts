@@ -13,7 +13,7 @@ const now = new Date("2026-11-09T19:00:00.000Z");
 describe("synthetic demo seed", () => {
   it("reruns overwrite only fixed synthetic rows and support revoke/restore", async () => {
     const db = await testDb();
-    await db.query("insert into attendees (id, display_name, created_at, expires_at) values ('real-person', 'untouched', now(), '2099-01-01')");
+    await db.query("insert into attendees (id, display_name, consent_cluster_map, consent_qr_checkin, created_at, expires_at) values ('real-person', 'untouched', false, false, now(), '2099-01-01')");
     const embed = vi.fn(async () => Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)));
     expect(await seedDemo(db, now, embed)).toEqual({ attendees: 12, optedIn: 12, initiallyRevoked: 1 });
     expect(embed).toHaveBeenCalledTimes(2);
@@ -50,6 +50,7 @@ describe("synthetic demo seed", () => {
   it("fails closed on a missing or unexpected demo pass, changing nothing", async () => {
     const db = await testDb();
     await expect(setDemoPass(db, false)).rejects.toThrow("Synthetic demo pass missing");
+    await db.query("insert into attendees (id, display_name, consent_cluster_map, consent_qr_checkin, created_at, expires_at) values ($1, 'x', false, false, now(), '2099-01-01')", [ALLOWED_DEMO_ID]);
     await db.query("insert into entitlements (attendee_id, pass_type, rooms, updated_at, expires_at) values ($1, 'general', '{*}', now(), '2099-01-01')", [ALLOWED_DEMO_ID]);
     await expect(setDemoPass(db, false)).rejects.toThrow("Synthetic demo pass missing");
     expect((await db.query("select rooms from entitlements")).rows).toEqual([{ rooms: ["*"] }]);

@@ -27,12 +27,12 @@ Cached aggregate routes are cheap and get the most headroom.
 | `GET /api/status` | none | 600 | 10 s in memory, single-flight, `Cache-Control: public, max-age=10` | none (no input) | Counts, latencies and states only. No paths, queries or IDs |
 | `GET /api/search` | none | 240 | none (per-query) | `q` one string, 1 to 500 chars; `mode` enum; `size` int 1 to 50 | Public talk catalog hits |
 | `POST /api/onboarding` | none | 60 | none | zod: `topics`/`goals` arrays of strings ≤ 100 chars (first 20 entries used), `experience` enum, `freeText` ≤ 1000 chars (first 500 searched), ISO dates; ≤ 1000 raw entries per list (400). Body ≤ 256 KiB (413), sized above the zod caps so the largest valid tag set gets a 400 or a 200, never a 413 | Public talk catalog hits. Answers are not stored |
-| `POST /api/schedule` | Bearer session token (HS256) | 120 | none | `maxTalks` 1 to 50, `talkIds` ≤ 100 strings or onboarding answers as above; body ≤ 256 KiB | The caller's own schedule |
+| `POST /api/schedule` | Bearer session token (HS256) | 120 | none | `maxTalks` 1 to 50, `talkIds` ≤ 100 strings or onboarding answers as above; body ≤ 256 KiB | The caller's own schedule. `404 not_found` and nothing stored if the attendee no longer exists |
 | `GET /api/schedule` | Bearer session token | 120 | none | none | The caller's own schedule |
 | `GET /api/schedule.ics` | Bearer session token | 120 (shares the schedule limit value) | `Cache-Control: private, no-store` | `talkId` one string of 1 to 200 chars | The caller's own schedule as iCalendar |
 | `POST /api/register` | none | 120 (`REGISTER_RATE_LIMIT_PER_MINUTE`) | none | zod: name ≤ 80, email ≤ 254 (never stored), 1 to 20 interests × ≤ 64, optional consent booleans (each defaults to true when absent; an explicit false is stored and honoured); unknown fields dropped | The new attendee ID and token, to that caller only |
 | `GET /api/me` | Bearer session token, plus expiry checked in the database | 120 | none | none | The caller's own profile (vector excluded) |
-| `DELETE /api/me` | Bearer session token | 120 (shares the `/api/me` limit value, own counter) | none | none | `204`, no body. Deletes the caller's `entitlements`, `schedules` and `attendees` documents (last, so a 503 can be retried). `404` if the profile is already gone; `401` for a missing or invalid token. Never returns or logs the attendee ID |
+| `DELETE /api/me` | Bearer session token | 120 (shares the `/api/me` limit value, own counter) | none | none | `204`, no body. Deletes the caller's `entitlements`, `schedules`, `identities` and `attendees` rows in one transaction (the profile last, so a 503 can be retried); foreign keys cascade from the profile. `404` if the profile is already gone; `401` for a missing or invalid token. Never returns or logs the attendee ID |
 | `POST /api/access/token` | Bearer session token; `403` if the stored `consent.qr_checkin` is false | 300 | none | none | Short-lived QR token (`aud` = access) |
 | `POST /api/access/scan` | Signed QR token, entitlement checked server-side | 600 | none | zod: token, room (known room catalog) | `allow`/`deny`, room, reason. Never the attendee ID |
 | `GET /api/interests/aggregate` | none (public organizer view) | 300 | 15 s in memory, single-flight, `Cache-Control: public, max-age=15`; stored copy written at most once a minute | none (no input) | Topic counts with k ≥ 5 suppression (small buckets merged into `other`, dropped if still < 5) |
@@ -96,6 +96,10 @@ status are logged.
   hardening).
 - **Database access.** The API connects with `DATABASE_URL` and verifies the database certificate against system
   roots or a configured private CA (`docs/database.md`).
+- **Row-level security and linked rows.** Row-level security is on for the app tables, and the Supabase Data API
+  roles `anon` and `authenticated` have no grants. Schedules, entitlements and identities cascade on attendee
+  delete, so no row outlives its attendee. A schedule save for a deleted attendee answers 404 `not_found` and
+  stores nothing. See `docs/database.md`, "Integrity and access".
 - **TLS.** In-cluster API TLS and ingress TLS are optional environment-level configuration. The application base does
   not require a specific ingress controller or certificate issuer.
 
@@ -170,5 +174,7 @@ admin access to GitHub or access to Cloudflare.
 8. On the Supabase free tier, registrations are kept forever. Check the
    database size each month. The project pauses after a week of inactivity.
    On 2026-11-13 the database was 32 MB of the 500 MB limit.
+   Row-level security is on for the app tables and the Data API roles have no grants (`docs/database.md`). The
+   Supabase Advisor must not report "RLS disabled in public".
 9. The lab guardrails (namespace, Pod Security, NetworkPolicies, AppProject)
    live in toghouse-monorepo. Read the diff before each manual Argo CD sync.

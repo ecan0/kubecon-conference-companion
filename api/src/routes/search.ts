@@ -25,6 +25,7 @@ import { parseSearchFilters } from "../search/facets.js";
 import { DEFAULT_MAX_TALKS, type ScoredTalk } from "../search/schedule.js";
 import {
   buildAndSaveSchedule,
+  AttendeeGoneError,
   createScheduleStore,
   getTalksByIds,
   loadSchedule,
@@ -165,6 +166,7 @@ function addRoutes(app: FastifyInstance, deps: SearchRouteDeps): void {
 
   app.setErrorHandler((err: Error, req, reply) => {
     if (sendIfRateLimited(err, reply)) return reply;
+    if (err instanceof AttendeeGoneError) return reply.code(404).send({ error: "not_found", message: "attendee not found" });
     if (sendDbError(err, req, reply)) return reply;
     if (err instanceof EmbedderBusyError) return reply.code(503).header("Retry-After", String(RETRY_AFTER_SECONDS)).send({ error: "search_overloaded" });
     const status = (err as { statusCode?: number }).statusCode;
@@ -225,7 +227,7 @@ function addRoutes(app: FastifyInstance, deps: SearchRouteDeps): void {
         span.setAttribute("http.response.status_code", reply.statusCode);
         return out;
       } catch (err) {
-        span.setAttribute("http.response.status_code", isDbError(err) ? 502 : 500);
+        span.setAttribute("http.response.status_code", err instanceof AttendeeGoneError ? 404 : isDbError(err) ? 502 : 500);
         throw err;
       }
     });

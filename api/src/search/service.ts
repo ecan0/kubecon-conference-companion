@@ -200,19 +200,33 @@ export interface ScheduleStore {
   load(attendeeId: string, now?: Date): Promise<{ talkIds: string[]; updatedAt: string } | undefined>;
 }
 
+/** Thrown when a schedule is written for an attendee who no longer exists (deleted, or never created). */
+export class AttendeeGoneError extends Error {
+  constructor() {
+    super("attendee not found");
+    this.name = "AttendeeGoneError";
+  }
+}
+
 /** `schedules` table store, one row per attendee. */
 export function createScheduleStore(db: Db): ScheduleStore {
   return {
     async save(attendeeId, talkIds, now) {
-      await runQuery(
-        db,
-        `insert into schedules (attendee_id, talk_ids, updated_at, expires_at)
+      try {
+        await runQuery(
+          db,
+          `insert into schedules (attendee_id, talk_ids, updated_at, expires_at)
          values ($1, $2::text[], $3::timestamptz, $4::timestamptz)
          on conflict (attendee_id) do update set
            talk_ids = excluded.talk_ids, updated_at = excluded.updated_at, expires_at = excluded.expires_at`,
-        // expires_at follows ATTENDEE_RETENTION_HOURS (kept by default; NO_EXPIRY sentinel).
-        [attendeeId, talkIds, now.toISOString(), expiresAtFor(now.getTime())],
-      );
+          // expires_at follows ATTENDEE_RETENTION_HOURS (kept by default; NO_EXPIRY sentinel).
+          [attendeeId, talkIds, now.toISOString(), expiresAtFor(now.getTime())],
+        );
+      } catch (err) {
+        // 23503: the schedules.attendee_id foreign key failed, so the attendee was deleted after the route's check.
+        if ((err as { code?: unknown } | null)?.code === "23503") throw new AttendeeGoneError();
+        throw err;
+      }
     },
     async load(attendeeId, now = new Date()) {
       const [row] = await runQuery<{ talk_ids: string[] | null; updated_at: Date | string; expires_at: Date | string }>(

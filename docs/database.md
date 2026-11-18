@@ -45,6 +45,29 @@ The schema is `SCHEMA_SQL` in `api/src/db/schema.ts`; there are no migration fil
 Indexes: GIN on `talks.fts` and on `talks.title` (trigram), HNSW (cosine) on `talks.embedding`, B-tree on every
 `expires_at` and on `identities.attendee_id`. Email is deliberately not stored.
 
+## Integrity and access
+
+Foreign keys: `schedules`, `entitlements` and `identities` reference `attendees(id)` with `on delete cascade`.
+Deleting an attendee removes that attendee's rows from these tables. A write for an attendee that does not exist
+fails. The schedule route answers 404 `not_found` and stores nothing.
+
+Consent: `consent_cluster_map` and `consent_qr_checkin` have no column default. Every insert sets both values.
+
+Row-level security: RLS is on for `talks`, `attendees`, `schedules`, `entitlements`, `identities` and
+`interest_clusters`. The migration revokes table grants from the Supabase Data API roles `anon` and
+`authenticated`. With no policies, those roles read and write nothing. The API role must own the tables or have
+`BYPASSRLS`. Otherwise the API loses access. A new app table needs `enable row level security` in `RLS_SQL`.
+
+Retention: the job deletes `schedules`, `entitlements` and `identities` before `attendees`. The cascade would
+otherwise remove child rows without counting them.
+
+Migration precondition: the constraint step fails on a database with child rows that have no attendee. Remove them
+before the first start with this migration. Check with:
+
+```sql
+select count(*) from schedules s where not exists (select 1 from attendees a where a.id = s.attendee_id);
+```
+
 ## Search
 
 Hybrid search fuses two ranked lists with reciprocal rank fusion inside Postgres: a keyword leg

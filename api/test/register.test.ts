@@ -259,10 +259,9 @@ describe("POST /api/register and GET /api/me", () => {
       expect(await rowsFor("attendees", "id", ada.attendeeId)).toBe(1);
     });
 
-    it("a second call cleans stray rows but answers 404", async () => {
+    it("a second call answers 404 and leaves no rows behind", async () => {
       const ada = (await register()).json() as RegisterResponse;
       expect((await del(ada.token)).statusCode).toBe(204);
-      await seedSchedule(ada.attendeeId);
       expect((await del(ada.token)).statusCode).toBe(404);
       expect(await rowsFor("schedules", "attendee_id", ada.attendeeId)).toBe(0);
     });
