@@ -38,6 +38,7 @@ describe("schedule TTL follows the setting", () => {
     if (env === undefined) delete process.env.ATTENDEE_RETENTION_HOURS; else process.env.ATTENDEE_RETENTION_HOURS = env;
     try {
       const db = await testDb();
+      await db.query("insert into attendees (id, display_name, consent_cluster_map, consent_qr_checkin, created_at, expires_at) values ('a1', 'x', false, false, now(), '9999-12-31T23:59:59.999Z')");
       await createScheduleStore(db).save("a1", ["t1"], now);
       const row = (await db.query<{ expires_at: Date | string }>("select expires_at from schedules where attendee_id = 'a1'")).rows[0]!;
       await db.close();

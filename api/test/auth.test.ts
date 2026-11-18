@@ -178,10 +178,9 @@ describe("POST /api/auth/:provider/callback", () => {
     expect(me.json()).toMatchObject({ attendeeId: "attendee-1", name: "Ada", interests: ["search"] });
   });
 
-  it("deletes a stale identity (attendee missing or expired) and issues a claim instead", async () => {
+  it("deletes a stale identity (attendee expired) and issues a claim instead", async () => {
     const hash = identityId(ENV.IDENTITY_HASH_KEY, "github", "9001");
     for (const setupStale of [
-      async () => { await seedIdentity(sharedDb, hash, "missing"); },
       async () => { await seedAttendee(sharedDb, "gone", "2000-01-01T00:00:00Z"); await seedIdentity(sharedDb, hash, "gone"); },
     ]) {
       await sharedDb.query("delete from identities"); await sharedDb.query("delete from attendees");

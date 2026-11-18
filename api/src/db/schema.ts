@@ -41,8 +41,8 @@ create table if not exists attendees (
   display_name text not null,
   interests text[] not null default '{}',
   interest_vector vector(${EMBEDDING_DIMS}),
-  consent_cluster_map boolean not null default false,
-  consent_qr_checkin boolean not null default false,
+  consent_cluster_map boolean not null,
+  consent_qr_checkin boolean not null,
   created_at timestamptz not null,
   expires_at timestamptz not null
 );
@@ -98,7 +98,7 @@ create index if not exists interest_clusters_run_idx on interest_clusters (run_i
 /** generated columns need an immutable expression; array_to_string is only stable. */
 const IMMUTABLE_HELPER_SQL = `
 create or replace function immutable_array_to_string(a text[], sep text) returns text
-  language sql immutable parallel safe as $$ select array_to_string(a, sep) $$;
+  language sql immutable parallel safe set search_path = pg_catalog as $$ select array_to_string(a, sep) $$;
 `;
 
 /**
@@ -113,10 +113,55 @@ alter table talks alter column conference set not null;
 create index if not exists talks_conference_start_idx on talks (conference, start_at);
 `;
 
+/**
+ * Attendee-linked rows never outlive their attendee. Deleting an attendee removes
+ * its schedule, entitlement and identity rows (cascade). A write for a deleted
+ * attendee fails instead of leaving an orphan row. Consent has no default: every
+ * insert states it. A database that already holds orphan rows fails here until
+ * they are removed. Idempotent: the guards skip constraints that exist.
+ */
+const ATTENDEE_CONSTRAINTS_SQL = `
+alter table attendees alter column consent_cluster_map drop default, alter column consent_qr_checkin drop default;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'schedules_attendee_fk') then
+    alter table schedules add constraint schedules_attendee_fk foreign key (attendee_id) references attendees (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'entitlements_attendee_fk') then
+    alter table entitlements add constraint entitlements_attendee_fk foreign key (attendee_id) references attendees (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'identities_attendee_fk') then
+    alter table identities add constraint identities_attendee_fk foreign key (attendee_id) references attendees (id) on delete cascade;
+  end if;
+end $$;
+`;
+
+/**
+ * Row-level security on every app table, and no grants to Supabase's public Data API roles (anon,
+ * authenticated). With no policies, RLS denies those roles. The API connects as the table owner,
+ * which bypasses RLS, so its queries are unaffected. Idempotent: enabling RLS twice is a no-op,
+ * and the role guard skips the revokes on databases without those roles (local Postgres, tests).
+ */
+const RLS_SQL = `
+alter table talks enable row level security;
+alter table attendees enable row level security;
+alter table schedules enable row level security;
+alter table entitlements enable row level security;
+alter table identities enable row level security;
+alter table interest_clusters enable row level security;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname in ('anon', 'authenticated')) then
+    revoke all on all tables in schema public from anon, authenticated;
+    alter default privileges in schema public revoke all on tables from anon, authenticated;
+  end if;
+end $$;
+`;
+
 /** Creates the extensions, tables and indexes that are missing. Safe to run repeatedly and concurrently at start. */
 export async function migrate(db: Db): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.query("select pg_advisory_xact_lock(7270001)");
-    await tx.exec(`create extension if not exists pg_trgm;${IMMUTABLE_HELPER_SQL}${SCHEMA_SQL}${TALKS_CONFERENCE_SQL}`);
+    await tx.exec(`create extension if not exists pg_trgm;${IMMUTABLE_HELPER_SQL}${SCHEMA_SQL}${TALKS_CONFERENCE_SQL}${ATTENDEE_CONSTRAINTS_SQL}${RLS_SQL}`);
   });
 }

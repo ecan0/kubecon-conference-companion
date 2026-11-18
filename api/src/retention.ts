@@ -3,8 +3,12 @@ import { withSpan } from "./telemetry/span.js";
 import { logs, SeverityNumber } from "@opentelemetry/api";
 import { retentionMsFromEnv } from "./retentionPolicy.js";
 
-/** Tables holding attendee data; each carries `expires_at`. Static identifiers, never user input. */
-export const RETENTION_TABLES = ["attendees", "schedules", "entitlements", "identities"] as const;
+/**
+ * Tables holding attendee data; each carries `expires_at`. Children come before
+ * `attendees`: the foreign keys cascade, so deleting an attendee first would remove
+ * their child rows without counting them. Static identifiers, never user input.
+ */
+export const RETENTION_TABLES = ["schedules", "entitlements", "identities", "attendees"] as const;
 
 export const RETENTION_OFF_MESSAGE = "Retention is off (ATTENDEE_RETENTION_HOURS unset or 0): attendee profiles are kept, only already-expired rows are deleted";
 

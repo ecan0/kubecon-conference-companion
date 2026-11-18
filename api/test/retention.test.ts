@@ -12,7 +12,7 @@ beforeEach(async () => { db = await testDb(); });
 afterEach(async () => { vi.unstubAllEnvs(); vi.restoreAllMocks(); await db.close(); });
 
 async function seed(id: string, createdAt: string, expiresAt: string) {
-  await db.query("insert into attendees (id, display_name, created_at, expires_at) values ($1, 'x', $2, $3)", [id, createdAt, expiresAt]);
+  await db.query("insert into attendees (id, display_name, consent_cluster_map, consent_qr_checkin, created_at, expires_at) values ($1, 'x', false, false, $2, $3)", [id, createdAt, expiresAt]);
   await db.query("insert into schedules (attendee_id, talk_ids, updated_at, expires_at) values ($1, '{}', $2, $3)", [id, createdAt, expiresAt]);
   await db.query("insert into entitlements (attendee_id, pass_type, rooms, updated_at, expires_at) values ($1, 'general', '{*}', $2, $3)", [id, createdAt, expiresAt]);
   await db.query("insert into identities (id, attendee_id, created_at, expires_at) values ($1, $1, $2, $3)", [id, createdAt, expiresAt]);
@@ -29,8 +29,9 @@ it("deletes old or expired rows in all four tables and keeps new rows at a fixed
   for (const [table, col] of [["attendees", "id"], ["identities", "id"]] as const) {
     expect(await ids(table, col)).toEqual(["boundary", "new", "valid"]);
   }
-  // schedules and entitlements carry no created_at: they follow expires_at (set to created + period when retention is on).
-  for (const table of ["schedules", "entitlements"]) expect(await ids(table)).toEqual(["boundary", "new", "old", "valid"]);
+  // schedules and entitlements carry no created_at: they follow expires_at. Deleting an attendee also
+  // removes its schedule and entitlement (cascade), so the old profile's rows are gone too.
+  for (const table of ["schedules", "entitlements"]) expect(await ids(table)).toEqual(["boundary", "new", "valid"]);
 });
 
 it("with retention off (null) logs one line and deletes only expired rows, never by created_at", async () => {
@@ -76,7 +77,7 @@ it("reports a failing table as incomplete after trying the rest", async () => {
   await expect(runRetention(failing, now, DAY)).rejects.toThrow("incomplete");
   expect(seen).toHaveLength(4);
   expect(await ids("attendees", "id")).toEqual([]);
-  expect(await ids("schedules")).toEqual(["expired"]);
+  expect(await ids("schedules")).toEqual([]); // the attendee delete cascades to its schedule
 });
 
 it("rejects an invalid clock or period before deleting anything", async () => {

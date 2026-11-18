@@ -18,8 +18,8 @@ async function setup(talks = [
   for (const [topic, count] of groups) {
     for (let i = 0; i < count; i++) {
       await db.query(
-        `insert into attendees (id, display_name, interests, consent_cluster_map, created_at, expires_at)
-         values ($1, 'x', $2::text[], true, now(), '9999-12-31T23:59:59Z')`,
+        `insert into attendees (id, display_name, interests, consent_cluster_map, consent_qr_checkin, created_at, expires_at)
+         values ($1, 'x', $2::text[], true, false, now(), '9999-12-31T23:59:59Z')`,
         [`att-${n++}`, [topic]],
       );
     }

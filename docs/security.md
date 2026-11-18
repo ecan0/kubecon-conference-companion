@@ -96,6 +96,10 @@ status are logged.
   hardening).
 - **Database access.** The API connects with `DATABASE_URL` and verifies the database certificate against system
   roots or a configured private CA (`docs/database.md`).
+- **Row-level security and linked rows.** Row-level security is on for the app tables, and the Supabase Data API
+  roles `anon` and `authenticated` have no grants. Schedules, entitlements and identities cascade on attendee
+  delete, so no row outlives its attendee. A schedule save for a deleted attendee answers 404 `not_found` and
+  stores nothing. See `docs/database.md`, "Integrity and access".
 - **TLS.** In-cluster API TLS and ingress TLS are optional environment-level configuration. The application base does
   not require a specific ingress controller or certificate issuer.
 
@@ -170,5 +174,7 @@ admin access to GitHub or access to Cloudflare.
 8. On the Supabase free tier, registrations are kept forever. Check the
    database size each month. The project pauses after a week of inactivity.
    On 2026-11-13 the database was 32 MB of the 500 MB limit.
+   Row-level security is on for the app tables and the Data API roles have no grants (`docs/database.md`). The
+   Supabase Advisor must not report "RLS disabled in public".
 9. The lab guardrails (namespace, Pod Security, NetworkPolicies, AppProject)
    live in toghouse-monorepo. Read the diff before each manual Argo CD sync.

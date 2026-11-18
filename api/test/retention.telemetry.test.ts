@@ -20,7 +20,7 @@ it("exports the count on a retention span and correlated log without document da
   const db = await testDb();
   try {
     for (const id of ["a", "b"]) {
-      await db.query("insert into attendees (id, display_name, created_at, expires_at) values ($1, 'x', '2026-11-01T00:00:00Z', '2026-11-02T00:00:00Z')", [id]);
+      await db.query("insert into attendees (id, display_name, consent_cluster_map, consent_qr_checkin, created_at, expires_at) values ($1, 'x', false, false, '2026-11-01T00:00:00Z', '2026-11-02T00:00:00Z')", [id]);
       await db.query("insert into schedules (attendee_id, updated_at, expires_at) values ($1, '2026-11-01T00:00:00Z', '2026-11-02T00:00:00Z')", [id]);
       await db.query("insert into entitlements (attendee_id, pass_type, updated_at, expires_at) values ($1, 'g', '2026-11-01T00:00:00Z', '2026-11-02T00:00:00Z')", [id]);
       await db.query("insert into identities (id, attendee_id, created_at, expires_at) values ($1, $1, '2026-11-01T00:00:00Z', '2026-11-02T00:00:00Z')", [id]);
